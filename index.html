@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laporan Penjualan</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <link class="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+</head>
+<body>
+
+    <!-- Professional Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loader-card">
+            <div class="loader-ring"></div>
+            <div class="loader-info">
+                <span class="loader-title">Audio Miniatur</span>
+                <p class="loader-subtitle">Memproses dan mengamankan data transaksi cabang...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky Glassmorphism Navbar -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <img src="logo.png" alt="Logo" class="nav-logo">
+            <span>Audio Miniatur <span class="badge-pro"></span></span>
+        </div>
+        <div class="nav-links">
+            <button class="nav-btn active" onclick="bukaHalaman('beranda')" id="nav-beranda">🏠 Beranda</button>
+            <button class="nav-btn" onclick="bukaHalaman('lihatStok')" id="nav-lihatStok">📦 Lihat Stok</button>
+            <button class="nav-btn" onclick="bukaHalaman('updateStok')" id="nav-updateStok">✏️ Update Stok</button>
+            <button class="nav-btn" id="installBtn" style="display: none;">📲 Install App</button>
+        </div>
+    </nav>
+
+    <!-- HALAMAN BERANDA -->
+    <div id="halaman-beranda" class="halaman">
+        <section class="hero-section">
+            <div class="hero-content">
+                <img src="logo.png" alt="Logo Toko" class="logo">
+                <div class="hero-text">
+                    <h2>Laporan Penjualan Audio Miniatur</h2>
+                    <p></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pengaturan Toko & Cabang -->
+        <header class="settings-header">
+            <div class="card card-profile">
+                <h3>🏢 Profil Cabang Toko</h3>
+                <div class="form-row">
+                    <input type="text" id="namaToko" placeholder="NAMA TOKO">
+                    <input type="text" id="namaCabang" placeholder="NAMA CABANG">
+                </div>
+                <button class="btn-primary" onclick="simpanProfilToko()">💾 Simpan Konfigurasi</button>
+            </div>
+        </header>
+
+        <!-- Dashboard Analytics Widget -->
+        <section class="dashboard">
+            <div class="box box-income">
+                <h3>💰 Omzet Hari Ini</h3>
+                <p id="penghasilanHariIni">Rp 0</p>
+            </div>
+            <div class="box">
+                <h3>📊 Total Penjualan</h3>
+                <p id="totalPenjualan">Rp 0</p>
+            </div>
+            <div class="box box-expense">
+                <h3>💸 Total Pengeluaran</h3>
+                <p id="totalPengeluaran">Rp 0</p>
+            </div>
+            <div class="box box-net">
+                <h3>📈 Total Pendapatan</h3>
+                <p id="totalPendapatan">Rp 0</p>
+            </div>
+        </section>
+
+        <!-- Fitur Utama: Rekapan Harian Otomatis & Cerdas -->
+        <section class="container-full">
+            <div class="card card-rekap-utama">
+                <h2>📅 Pusat Rekapan Harian Otomatis</h2>
+                <p class="card-desc">Semua teks input penjualan hari-hari sebelumnya diarsipkan otomatis di sini. Karyawan tidak perlu menghapus manual lembar kerja utama.</p>
+                <div class="rekap-filter-zone">
+                    <input type="date" id="tanggalRekap">
+                    <button class="btn-success" onclick="lihatRekap()">🔍 Buka & Tampilkan Rekapan</button>
+                </div>
+                <div id="hasilRekap" class="hasil-rekap-box">
+                    <p class="placeholder-text">Silakan pilih tanggal untuk melihat riwayat rekapan cabang.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Formulir Input Transaksi Aktif -->
+        <section class="container">
+            <div class="card grid-span-2">
+                <h2>🛒 Input Penjualan Hari Ini</h2>
+                <div class="form-grid">
+                    <div class="input-group"><label>No</label><input type="number" id="no" readonly></div>
+                    <div class="input-group"><label>Nama Produk</label><input type="text" id="barang" placeholder="CARI BARANG..." list="daftarBarang" autocomplete="off"></div>
+                    <div class="input-group"><label>Qty</label><input type="number" id="qty" placeholder="0" oninput="hitungTotal()"></div>
+                    <div class="input-group"><label>Harga Satuan</label><input type="text" id="harga" oninput="formatRupiahInput(this); hitungTotal();" placeholder="0"></div>
+                    <div class="input-group"><label>Total</label><input type="number" id="total" placeholder="0" readonly></div>
+                </div>
+                <button class="btn-primary btn-large" onclick="tambahPenjualan()">⚡ Simpan Transaksi</button>
+
+                <div class="table-responsive">
+                    <table class="modern-table">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Nama Barang</th>
+                                <th>Qty</th>
+                                <th>Harga</th>
+                                <th>Total</th>
+                                <th>Tanggal</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listPenjualan"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💸 Operasional & Pengeluaran</h2>
+                <input type="text" id="namaPengeluaran" placeholder="KEPERLUAN PENGELUARAN">
+                <input type="number" id="nilaiPengeluaran" placeholder="NOMINAL (Rp)">
+                <button class="btn-danger" onclick="tambahPengeluaran()">📉 Simpan Pengeluaran</button>
+                <ul id="listPengeluaran" class="modern-list"></ul>
+            </div>
+
+            <div class="card">
+                <h2>📦 Log Logistik Masuk</h2>
+                <input type="text" id="barangMasuk" placeholder="NAMA BARANG">
+                <input type="number" id="jumlahMasuk" placeholder="JUMLAH QUANTITY">
+                <button class="btn-success" onclick="tambahMasuk()">📥 Simpan Barang Masuk</button>
+                <ul id="listMasuk" class="modern-list"></ul>
+            </div>
+            
+            <div class="card">
+                <h2>📤 Log Logistik Keluar</h2>
+                <input type="text" id="barangKeluar" placeholder="NAMA BARANG">
+                <input type="number" id="jumlahKeluar" placeholder="JUMLAH QUANTITY">
+                <button class="btn-warning" onclick="tambahKeluar()">📤 Simpan Barang Keluar</button>
+                <ul id="listKeluar" class="modern-list"></ul>
+            </div>
+        </section>
+
+        <!-- Aksi Global Cabang -->
+        <section class="global-actions">
+            <button class="btn-pdf" onclick="exportPDF()">📄 Export Dokumen Laporan Resmi (PDF)</button>
+            <button class="btn-clear" onclick="bukaModalTutupBuku()">🔒 Proses Tutup Buku Hari Ini</button>
+        </section>
+    </div>
+
+    <!-- HALAMAN LIHAT STOK -->
+    <div id="halaman-lihatStok" class="halaman" style="display:none;">
+        <section class="card">
+            <h2>📦 Status Inventaris Real-Time</h2>
+            <div class="stok-search">
+                <input type="text" id="cariStok" placeholder="🔍 Masukkan nama produk yang ingin dicari..." oninput="tampilStok()" autocomplete="off">
+            </div>
+            <div class="stok-ringkasan">
+                <div class="stok-stat tab-total"><span>Total Varian</span><strong id="totalItemStok">0</strong></div>
+                <div class="stok-stat tab-ready"><span>Stok Aman</span><strong id="totalStokTersedia">0</strong></div>
+                <div class="stok-stat tab-empty"><span>Stok Habis</span><strong id="totalStokHabis">0</strong></div>
+            </div>
+            <div class="table-responsive">
+                <table class="modern-table text-left">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Nama Barang</th>
+                            <th>Stok Tersedia</th>
+                            <th>Indikator</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listStok"></tbody>
+                </table>
+            </div>
+            <div id="stokKosong" class="stok-empty" style="display:none;">
+                <p>⚠️ Produk tidak ditemukan di gudang cabang ini.</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- HALAMAN UPDATE STOK -->
+    <div id="halaman-updateStok" class="halaman" style="display:none;">
+        <section class="container">
+            <div class="card">
+                <h2>➕ Tambah Inventaris Manual</h2>
+                <input type="text" id="stokBarangMasuk" placeholder="NAMA BARANG" list="daftarBarangUpdate" autocomplete="off">
+                <datalist id="daftarBarangUpdate"></datalist>
+                <input type="number" id="stokJumlahMasuk" placeholder="JUMLAH UNIT" min="1">
+                <button class="btn-success" onclick="tambahStok()">✅ Eksekusi Tambah Stok</button>
+                <div id="notifTambahStok" class="notif-success" style="display:none;"></div>
+            </div>
+            <div class="card">
+                <h2>➖ Penyesuaian / Pengurangan Stok</h2>
+                <input type="text" id="stokBarangKeluar" placeholder="NAMA BARANG" list="daftarBarangUpdate2" autocomplete="off">
+                <datalist id="daftarBarangUpdate2"></datalist>
+                <input type="number" id="stokJumlahKeluar" placeholder="JUMLAH UNIT" min="1">
+                <button class="btn-danger" onclick="kurangiStok()">❌ Eksekusi Kurang Stok</button>
+                <div id="notifKurangStok" class="notif-danger" style="display:none;"></div>
+            </div>
+            <div class="card grid-span-2">
+                <h2>📋 Buku Ledger Riwayat Master Stok</h2>
+                <div class="riwayat-actions">
+                    <button class="btn-danger btn-small" onclick="resetSemuaStok()">🔄 Reset Total Master Stok</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="modern-table">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Nama Barang Master</th>
+                                <th>Total Fisik Akhir</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listSemuaStok"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p><strong>Audio Miniatur Pro System</strong> © 2026 • Dirancang Responsif untuk Semua Cabang Toko</p>
+    </footer>
+
+    <datalist id="daftarBarang"></datalist>
+    <datalist id="daftarBarangUpdate"></datalist>
+    <datalist id="daftarBarangUpdate2"></datalist>
+
+    <script src="script.js"></script>
+    <script>
+        // Data Master Barang Tetap Disimpan di Sini
+        const daftarBarang = ["BOX ANAK GAJAH 3\" POLOS","BOX ANAK GAJAH 3\" CAT PUTIH","BOX ANAK GAJAH 3\" CAT MERAH","BOX ANAK GAJAH 3\" CAT BIRU","BOX ANAK GAJAH 5\" POLOS","BOX ANAK GAJAH 5\" CAT PUTIH","BOX ANAK GAJAH 5\" CAT MERAH","BOX ANAK GAJAH 5\" CAT BIRU","BOX ANAK GAJAH 6\" POLOS","BOX ATV 3\" POLOS","BOX ATV 5\" POLOS","BOX CBS 2\" POLOS","BOX CBS 2\" CAT BIRU","BOX CBS 2\" CAT PUTIH","BOX CBS 2\" CAT MERAH","BOX CBS 3\" POLOS","BOX CBS 3\" CAT PUTIH","BOX CBS 3\" CAT BIRU","BOX CBS 3\" CAT MERAH","BOX CBS 4\" POLOS","BOX CBS 4\" CAT BIRU","BOX CBS 4\" CAT PUTIH","BOX CBS 4\" CAT MERAH","BOX CBS 5\" POLOS","BOX CBS 6\" POLOS","BOX CBS 8\" POLOS","BOX CBS 10\" POLOS","BOX CBS 12\" POLOS","BOX CLA 3\" POLOS","BOX CLA 3\" CAT BIRU","BOX CLA 3\" CAT MERAH","BOX CLA 3\" CAT PUTIH","BOX CLA 4\" POLOS","BOX CLA 4\" CAT PUTIH","BOX CLA 4\" CAT BIRU","BOX CLA 4\" CAT MERAH","BOX CLA 5\" POLOS","BOX CLA 5\" CAT PUTIH","BOX CLA 5\" CAT BIRU","BOX CLA 5\" CAT MERAH","BOX CLA 6\" TEXTURE BIRU","BOX CLA 6\" TEXTURE HITAM","BOX CLA 6\" SINGLE POLOS","BOX CLA 6\" ALBASIA POLOS","BOX CLA 6\" OXWOOD POLOS","BOX CLA 8\" SINGLE POLOS","BOX CLA 8\" POLOS","BOX CLA 8\" TEXTURE BIRU","BOX CLA 8\" TEXTURE HITAM","BOX CLA 10\" POLOS","BOX CLA 10\" SINGLE POLOS","BOX CLA 12\" POLOS","BOX F1 3\" POLOS","BOX F1 3\" CAT PUTIH","BOX F1 3\" CAT BIRU","BOX F1 3\" CAT MERAH","BOX F1 4\" POLOS","BOX F1 4\" CAT BIRU","BOX F1 4\" CAT PUTIH","BOX F1 4\" CAT MERAH","BOX F1 5\" POLOS","BOX F1 5\" CAT MERAH","BOX F1 5\" CAT PUTIH","BOX F1 5\" CAT BIRU","BOX F1 6\" POLOS","BOX F1 6\" TEXTURE BIRU","BOX F1 6\" TEXTURE HITAM","BOX F1 6\" ALBASIA POLOS","BOX F1 8\" POLOS","BOX F1 10\" POLOS","BOX F1 12\" POLOS","BOX KIMOCHI 3\" POLOS","BOX KIMOCHI 3\" CAT BIRU","BOX KIMOCHI 3\" CAT MERAH","BOX KIMOCHI 3\" CAT PUTIH","BOX LINE ARRAY 2\" POLOS","BOX LINE ARRAY 2\" CAT PUTIH","BOX LINE ARRAY 2\" CAT MERAH","BOX LINE ARRAY 2\" CAT BIRU","BOX LINE ARRAY 3\" POLOS","BOX LINE ARRAY 3\" CAT PUTIH","BOX LINE ARRAY 3\" CAT MERAH","BOX LINE ARRAY 3\" CAT BIRU","BOX LINE ARRAY 4\" POLOS","BOX LINE ARRAY 4\" TEXTURE BIRU","BOX LINE ARRAY 4\" TEXTURE MERAH","BOX LINE ARRAY 4\" TEXTURE HITAM","BOX LINE ARRAY 6\" POLOS","BOX LINE ARRAY 8\" POLOS","BOX MINISCOP 3\" POLOS","BOX MINISCOP 3\" CAT PUTIH","BOX MINISCOP 3\" CAT MERAH","BOX MINISCOP 3\" CAT BIRU","BOX MINISCOP 4\" POLOS","BOX MINISCOP 4\" CAT PUTIH","BOX MINISCOP 4\" CAT BIRU","BOX MINISCOP 4\" CAT MERAH","BOX MINISCOP 5\" POLOS","BOX MINISCOP 6\" POLOS","BOX MINISCOP 8\" POLOS","BOX MINISCOP 10\" POLOS","BOX MINISCOP 12\" POLOS","BOX PARATHEL 3\" POLOS","BOX PARATHEL 3\" CAT PUTIH","BOX PARATHEL 3\" CAT BIRU","BOX PARATHEL 3\" CAT MERAH","BOX PARATHEL 6\" POLOS","BOX PARATHEL 8\" POLOS","BOX PARATHEL 10\" POLOS","BOX PARATHEL 12\" POLOS","BOX PARATOP 4\" POLOS","BOX PLANAR 3\" POLOS","BOX PLANAR 3\" CAT BIRU","BOX PLANAR 3\" CAT MERAH","BOX PLANAR 3\" CAT PUTIH","BOX PLANAR 4\" POLOS","BOX PLANAR 4\" CAT BIRU","BOX PLANAR 4\" CAT PUTIH","BOX PLANAR 4\" CAT MERAH","BOX PLANAR 5\" POLOS","BOX PLANAR 6\" POLOS","BOX PLANAR 6\" CAT BIRU","BOX PLANAR 6\" CAT MERAH","BOX PLANAR 6\" CAT PUTIH","BOX PLANAR 6\" TEXTURE BIRU","BOX PLANAR 6\" TEXTURE HITAM","BOX PLANAR 6\" TEXTURE MERAH","BOX PLANAR 8\" POLOS","BOX PLANAR 8\" TEXTURE BIRU","BOX PLANAR 8\" TEXTURE HITAM","BOX PLANAR 8\" TEXTURE MERAH","BOX PLANAR BREWOG 6\" POLOS","BOX PLANAR BREWOG 6\" TEXTURE BIRU","BOX PLANAR BREWOG 6\" TEXTURE MERAH","BOX PLANAR BREWOG 6\" TEXTURE HITAM","BOX PLANAR BREWOG 8\" POLOS","BOX PLANAR BREWOG 8\" TEXTURE HITAM","BOX PLANAR BREWOG 8\" TEXTURE BIRU","BOX PLANAR BREWOG 8\" TEXTURE MERAH","BOX PLANAR BREWOG 10\" POLOS","BOX PLANAR BREWOG 12\" POLOS","BOX SUPALI 3\" POLOS","BOX SUPALI 3\" CAT BIRU","BOX SUPALI 3\" CAT MERAH","BOX SUPALI 3\" CAT PUTIH","BOX SUPALI 4\" POLOS","BOX SUPALI 4\" CAT BIRU","BOX SUPALI 4\" CAT MERAH","BOX SUPALI 4\" CAT PUTIH","BOX SUPALI 5\" POLOS","BOX SUPALI 6\" POLOS","BOX SUPALI 6\" TEXTURE HITAM","BOX SUPALI 8\" POLOS","BOX SUPALI 10\" POLOS","BOX SUPALI 12\" POLOS","BOX SUPALI 12\" TEXTURE HITAM","BOX D10","BOX CA 10","BOX ASHLEY FLAT & KARAKTER","BOX ASHLEY MINI","BOX CROSSOVER 2WAY","BOX MP3","BOX ANAK GAJAH 3\" POLOS + SPEAKER","KABEL 0,75 MERAH / HITAM","KABEL 1,5 MERAH / HITAM","KABEL 2,5 MERAH / HITAM","AMPLI D10","AMPLI D100","MINI MIXER","MIC WIRELESS","TRAFO 5A 45V","TRAFO 10A 45V L","TRAFO 10A 55V T"];
+        
+        function isiDaftarBarang() {
+            ["daftarBarang", "daftarBarangUpdate", "daftarBarangUpdate2"].forEach(id => {
+                const datalist = document.getElementById(id);
+                if (!datalist) return;
+                datalist.innerHTML = "";
+                daftarBarang.forEach(item => {
+                    const option = document.createElement("option");
+                    option.value = item.toUpperCase();
+                    datalist.appendChild(option);
+                });
+            });
+        }
+        isiDaftarBarang();
+
+        document.addEventListener("input", function(e){
+            if(e.target.tagName === "INPUT" && e.target.type === "text"){
+                const pos = e.target.selectionStart;
+                e.target.value = e.target.value.toUpperCase();
+                e.target.setSelectionRange(pos, pos);
+            }
+        });
+    </script>
+</body>
+</html>
