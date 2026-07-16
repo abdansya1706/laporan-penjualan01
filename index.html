@@ -15,7 +15,6 @@
 </head>
 <body>
 
-    <!-- Professional Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loader-card">
             <div class="loader-ring"></div>
@@ -26,7 +25,6 @@
         </div>
     </div>
 
-    <!-- Sticky Glassmorphism Navbar -->
     <nav class="navbar">
         <div class="nav-brand">
             <img src="logo.png" alt="Logo" class="nav-logo">
@@ -40,7 +38,6 @@
         </div>
     </nav>
 
-    <!-- HALAMAN BERANDA -->
     <div id="halaman-beranda" class="halaman">
         <section class="hero-section">
             <div class="hero-content">
@@ -52,7 +49,6 @@
             </div>
         </section>
 
-        <!-- Pengaturan Toko & Cabang -->
         <header class="settings-header">
             <div class="card card-profile">
                 <h3>🏢 Profil Cabang Toko</h3>
@@ -64,7 +60,6 @@
             </div>
         </header>
 
-        <!-- Dashboard Analytics Widget -->
         <section class="dashboard">
             <div class="box box-income">
                 <h3>💰 Omzet Hari Ini</h3>
@@ -84,7 +79,6 @@
             </div>
         </section>
 
-        <!-- Fitur Utama: Rekapan Harian Otomatis & Cerdas -->
         <section class="container-full">
             <div class="card card-rekap-utama">
                 <h2>📅 Pusat Rekapan Harian Otomatis</h2>
@@ -99,7 +93,6 @@
             </div>
         </section>
 
-        <!-- Formulir Input Transaksi Aktif -->
         <section class="container">
             <div class="card grid-span-2">
                 <h2>🛒 Input Penjualan Hari Ini</h2>
@@ -155,14 +148,13 @@
             </div>
         </section>
 
-        <!-- Aksi Global Cabang -->
-        <section class="global-actions">
+        <section class="global-actions" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 20px;">
             <button class="btn-pdf" onclick="exportPDF()">📄 Export Dokumen Laporan Resmi (PDF)</button>
-            <button class="btn-clear" onclick="bukaModalTutupBuku()">🔒 Proses Tutup Buku Hari Ini</button>
+            <button class="btn-clear" onclick="prosesTutupBuku()" style="background-color: #d97706; color: white;">🔒 Proses Tutup Buku Hari Ini</button>
+            <button class="btn-hapus" onclick="hapusSemuaData()" style="background-color: #dc2626; color: white; border: none; padding: 12px 20px; border-radius: 10px; cursor: pointer; font-weight: bold;">🗑️ Hapus Semua Data</button>
         </section>
     </div>
 
-    <!-- HALAMAN LIHAT STOK -->
     <div id="halaman-lihatStok" class="halaman" style="display:none;">
         <section class="card">
             <h2>📦 Status Inventaris Real-Time</h2>
@@ -193,7 +185,6 @@
         </section>
     </div>
 
-    <!-- HALAMAN UPDATE STOK -->
     <div id="halaman-updateStok" class="halaman" style="display:none;">
         <section class="container">
             <div class="card">
@@ -234,7 +225,7 @@
     </div>
 
     <footer>
-        <p><strong>Audio Miniatur Pro System</strong> © 2026 • Dirancang Responsif untuk Semua Cabang Toko</p>
+        <p><strong>Audio Miniatur</strong> © 2026 • DJossDjiss</p>
     </footer>
 
     <datalist id="daftarBarang"></datalist>

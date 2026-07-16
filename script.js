@@ -1,24 +1,19 @@
-/* ==========================================================================
-   STORAGE KEYS & GLOBAL EDIT TRACKING
-   ========================================================================== */
+/* =========================
+   STORAGE KEYS (harus di atas agar tidak TDZ)
+========================= */
 const STORAGE_KEY_STOK = 'stokBarang';
+let editIndex = -1;
 
-// Tracking Index Edit untuk Masing-Masing Modul
-let editIndex = -1;            // Penjualan
-let editIndexMasuk = -1;       // Barang Masuk
-let editIndexKeluar = -1;      // Barang Keluar
-let editIndexPengeluaran = -1;  // Pengeluaran
-
-/* ==========================================================================
+/* =========================
    LOAD AWAL
-   ========================================================================== */
+========================= */
 loadData();
 loadProfil();
 initStokDariDaftarBarang();
 
-/* ==========================================================================
-   UTILITAS / HELPER
-   ========================================================================== */
+/* =========================
+   UTILITAS
+========================= */
 function rupiah(angka){
     return "Rp " + Number(angka || 0).toLocaleString("id-ID");
 }
@@ -31,13 +26,13 @@ function getData(key){
     return JSON.parse(localStorage.getItem(key)) || [];
 }
 
-function setData(key, data){
+function setData(key,data){
     localStorage.setItem(key, JSON.stringify(data));
 }
 
-/* ==========================================================================
+/* =========================
    PROFIL TOKO
-   ========================================================================== */
+========================= */
 function simpanProfilToko(){
     localStorage.setItem("namaToko", document.getElementById("namaToko").value);
     localStorage.setItem("namaCabang", document.getElementById("namaCabang").value);
@@ -49,21 +44,18 @@ function loadProfil(){
     document.getElementById("namaCabang").value = localStorage.getItem("namaCabang") || "";
 }
 
-/* ==========================================================================
-   TOTAL OTOMATIS (PENJUALAN)
-   ========================================================================== */
+/* =========================
+   TOTAL OTOMATIS
+========================= */
 function hitungTotal(){
     let jumlah = Number(document.getElementById("qty").value) || 0;
     let harga = Number(document.getElementById("harga").value.replace(/\./g,'')) || 0;
     document.getElementById("total").value = jumlah * harga;
 }
 
-/* ==========================================================================
-   MODUL: PENJUALAN
-   ========================================================================== */
-/* ==========================================================================
-   MODUL: PENJUALAN (Pembaruan: Nomor Urut Dinamis & Bebas Edit Qty/Harga)
-   ========================================================================== */
+/* =========================
+   PENJUALAN
+========================= */
 function tambahPenjualan(){
     console.log('[DEBUG] tambahPenjualan() dipanggil');
 
@@ -77,8 +69,6 @@ function tambahPenjualan(){
         return;
     }
 
-    // Nomor urut (no) akan otomatis dihitung secara dinamis saat tampil & PDF,
-    // namun kita tetap simpan properti ini agar struktur data lama tidak rusak.
     let item = {
         no: (editIndex >= 0) ? data[editIndex].no : data.length + 1,
         barang: namaBarang,
@@ -92,7 +82,6 @@ function tambahPenjualan(){
     if (namaBarang && qtyJual > 0) {
         const stok = getStokData();
 
-        // Jika dalam mode EDIT, kembalikan dulu stok barang lama sebelum dikurangi qty baru
         if (editIndex >= 0) {
             const oldItem = data[editIndex];
             const oldNama = oldItem.barang.toUpperCase();
@@ -112,7 +101,6 @@ function tambahPenjualan(){
                 'Dibutuhkan: ' + qtyJual + '\n\n' +
                 'Tetap lanjutkan penjualan?'
             )) {
-                // Batalkan pengembalian stok jika user menolak melanjutkan
                 if (editIndex >= 0) {
                     const oldItem = data[editIndex];
                     const oldNama = oldItem.barang.toUpperCase();
@@ -140,13 +128,12 @@ function tambahPenjualan(){
 
     setData("penjualan", data);
 
-    // Reset Form Input
     document.getElementById("barang").value="";
     document.getElementById("qty").value="";
     document.getElementById("harga").value="";
     document.getElementById("total").value="";
 
-    // Pastikan input Qty dan Harga tetap terbuka (tidak terkunci)
+    // Menjaga agar form tidak terkunci/readonly
     document.getElementById("qty").readOnly = false;
     document.getElementById("harga").readOnly = false;
 
@@ -158,10 +145,10 @@ function tampilPenjualan(){
     let html="";
 
     data.forEach((item, index)=>{
-        // Menggunakan (index + 1) sebagai nomor urut agar nomor selalu berurutan rapi (1, 2, 3...)
+        // Menggunakan index + 1 sebagai nomor urut dinamis
         html += `
         <tr>
-            <td>${index + 1}</td> 
+            <td>${index + 1}</td>
             <td>${item.barang}</td>
             <td>${item.qty}</td>
             <td>${rupiah(item.harga)}</td>
@@ -177,11 +164,29 @@ function tampilPenjualan(){
     document.getElementById("listPenjualan").innerHTML = html;
 }
 
+function hapusPenjualan(index){
+    if(confirm("Hapus data?")){
+        let data = getData("penjualan");
+        const item = data[index];
+        const namaBarang = (item.barang || '').toUpperCase();
+        const qty = Number(item.qty) || 0;
+        if (namaBarang && qty > 0) {
+            const stok = getStokData();
+            stok[namaBarang] = (stok[namaBarang] || 0) + qty;
+            setStokData(stok);
+        }
+
+        data.splice(index, 1);
+        setData("penjualan", data);
+        loadData();
+    }
+}
+
 function editPenjualan(index){
     let data = getData("penjualan");
     let item = data[index];
 
-    // Menampilkan nomor urut dinamis saat ini di form (agar tidak membingungkan)
+    // Tampilkan nomor urut baris di form agar tidak membingungkan
     document.getElementById("no").value = index + 1;
     document.getElementById("barang").value = item.barang;
     document.getElementById("qty").value = item.qty;
@@ -190,14 +195,14 @@ function editPenjualan(index){
 
     editIndex = index;
 
-    // MEMBIARKAN QTY DAN HARGA TETAP BISA DIEDIT (TIDAK READONLY)
+    // Pastikan input tetap terbuka agar bisa diedit
     document.getElementById("qty").readOnly = false;
     document.getElementById("harga").readOnly = false;
 }
 
-/* ==========================================================================
-   MODUL: BARANG MASUK GUDANG
-   ========================================================================== */
+/* =========================
+   BARANG MASUK
+========================= */
 function tambahMasuk(){
     let data = getData("masuk");
     let namaBarang = document.getElementById("barangMasuk").value.trim().toUpperCase();
@@ -208,40 +213,15 @@ function tambahMasuk(){
         return;
     }
 
-    if (editIndexMasuk >= 0) {
-        // Mode Edit: Ambil item lama dan simpan nama barang baru (jumlah dikunci)
-        let itemLama = data[editIndexMasuk];
-        
-        // Jika nama barang diganti, pindahkan stoknya
-        if (itemLama.barang.toUpperCase() !== namaBarang) {
-            const stok = getStokData();
-            // Kurangi stok dari barang lama
-            stok[itemLama.barang.toUpperCase()] = Math.max(0, (stok[itemLama.barang.toUpperCase()] || 0) - itemLama.jumlah);
-            // Tambahkan stok ke barang baru
-            stok[namaBarang] = (stok[namaBarang] || 0) + itemLama.jumlah;
-            setStokData(stok);
-        }
+    const stok = getStokData();
+    stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
+    setStokData(stok);
 
-        data[editIndexMasuk] = {
-            barang: namaBarang,
-            jumlah: itemLama.jumlah, // Tetap menggunakan jumlah lama (dikunci)
-            tanggal: itemLama.tanggal
-        };
-
-        editIndexMasuk = -1;
-        document.getElementById("jumlahMasuk").readOnly = false; // Buka kunci input
-    } else {
-        // Mode Tambah Baru
-        const stok = getStokData();
-        stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
-        setStokData(stok);
-
-        data.push({
-            barang: namaBarang,
-            jumlah: jumlah,
-            tanggal: tanggalHariIni()
-        });
-    }
+    data.push({
+        barang: namaBarang,
+        jumlah: jumlah,
+        tanggal: tanggalHariIni()
+    });
 
     setData("masuk", data);
     document.getElementById("barangMasuk").value="";
@@ -257,11 +237,8 @@ function tampilMasuk(){
     data.forEach((item, index)=>{
         html += `
         <li>
-            <span class="text-log">🟢 ${item.barang} (<strong>${item.jumlah} Pcs</strong>) - <small>${item.tanggal || tanggalHariIni()}</small></span>
-            <div class="log-actions" style="display:inline-block; margin-left: 10px;">
-                <button class="btnedit" onclick="editMasuk(${index})">Edit</button>
-                <button class="btnhapus" onclick="hapusMasuk(${index})">Hapus</button>
-            </div>
+            ${item.barang} (${item.jumlah})
+            <button class="btnhapus" onclick="hapusMasuk(${index})">Hapus</button>
         </li>`;
     });
 
@@ -269,40 +246,24 @@ function tampilMasuk(){
 }
 
 function hapusMasuk(index){
-    if(confirm("Hapus log barang masuk ini?")){
-        let data = getData("masuk");
-        const item = data[index];
-        const namaBarang = (item.barang || '').toUpperCase();
-        const jumlah = Number(item.jumlah) || 0;
-        
-        if (namaBarang && jumlah > 0) {
-            const stok = getStokData();
-            stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
-            setStokData(stok);
-        }
-
-        data.splice(index, 1);
-        setData("masuk", data);
-        loadData();
-    }
-}
-
-function editMasuk(index){
     let data = getData("masuk");
-    let item = data[index];
+    const item = data[index];
+    const namaBarang = (item.barang || '').toUpperCase();
+    const jumlah = Number(item.jumlah) || 0;
+    if (namaBarang && jumlah > 0) {
+        const stok = getStokData();
+        stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
+        setStokData(stok);
+    }
 
-    document.getElementById("barangMasuk").value = item.barang;
-    document.getElementById("jumlahMasuk").value = item.jumlah;
-
-    editIndexMasuk = index;
-
-    // KUNCI INPUT ANGKA JUMLAH MASUK
-    document.getElementById("jumlahMasuk").readOnly = true;
+    data.splice(index, 1);
+    setData("masuk", data);
+    loadData();
 }
 
-/* ==========================================================================
-   MODUL: BARANG KELUAR CABANG
-   ========================================================================== */
+/* =========================
+   BARANG KELUAR
+========================= */
 function tambahKeluar(){
     let data = getData("keluar");
     let namaBarang = document.getElementById("barangKeluar").value.trim().toUpperCase();
@@ -313,40 +274,15 @@ function tambahKeluar(){
         return;
     }
 
-    if (editIndexKeluar >= 0) {
-        // Mode Edit: Ambil item lama dan simpan nama barang baru (jumlah dikunci)
-        let itemLama = data[editIndexKeluar];
+    const stok = getStokData();
+    stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
+    setStokData(stok);
 
-        // Jika nama barang diganti, pindahkan pengembalian stoknya
-        if (itemLama.barang.toUpperCase() !== namaBarang) {
-            const stok = getStokData();
-            // Kembalikan stok ke barang lama yang batal dikurangi
-            stok[itemLama.barang.toUpperCase()] = (stok[itemLama.barang.toUpperCase()] || 0) + itemLama.jumlah;
-            // Kurangi stok barang baru
-            stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - itemLama.jumlah);
-            setStokData(stok);
-        }
-
-        data[editIndexKeluar] = {
-            barang: namaBarang,
-            jumlah: itemLama.jumlah, // Tetap menggunakan jumlah lama (dikunci)
-            tanggal: itemLama.tanggal
-        };
-
-        editIndexKeluar = -1;
-        document.getElementById("jumlahKeluar").readOnly = false; // Buka kunci input
-    } else {
-        // Mode Tambah Baru
-        const stok = getStokData();
-        stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
-        setStokData(stok);
-
-        data.push({
-            barang: namaBarang,
-            jumlah: jumlah,
-            tanggal: tanggalHariIni()
-        });
-    }
+    data.push({
+        barang: namaBarang,
+        jumlah: jumlah,
+        tanggal: tanggalHariIni()
+    });
 
     setData("keluar", data);
     document.getElementById("barangKeluar").value="";
@@ -362,11 +298,8 @@ function tampilKeluar(){
     data.forEach((item, index)=>{
         html += `
         <li>
-            <span class="text-log">🔴 ${item.barang} (<strong>${item.jumlah} Pcs</strong>) - <small>${item.tanggal || tanggalHariIni()}</small></span>
-            <div class="log-actions" style="display:inline-block; margin-left: 10px;">
-                <button class="btnedit" onclick="editKeluar(${index})">Edit</button>
-                <button class="btnhapus" onclick="hapusKeluar(${index})">Hapus</button>
-            </div>
+            ${item.barang} (${item.jumlah})
+            <button class="btnhapus" onclick="hapusKeluar(${index})">Hapus</button>
         </li>`;
     });
 
@@ -374,69 +307,31 @@ function tampilKeluar(){
 }
 
 function hapusKeluar(index){
-    if(confirm("Hapus log barang keluar ini?")){
-        let data = getData("keluar");
-        const item = data[index];
-        const namaBarang = (item.barang || '').toUpperCase();
-        const jumlah = Number(item.jumlah) || 0;
-        
-        if (namaBarang && jumlah > 0) {
-            const stok = getStokData();
-            stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
-            setStokData(stok);
-        }
-
-        data.splice(index, 1);
-        setData("keluar", data);
-        loadData();
-    }
-}
-
-function editKeluar(index){
     let data = getData("keluar");
-    let item = data[index];
+    const item = data[index];
+    const namaBarang = (item.barang || '').toUpperCase();
+    const jumlah = Number(item.jumlah) || 0;
+    if (namaBarang && jumlah > 0) {
+        const stok = getStokData();
+        stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
+        setStokData(stok);
+    }
 
-    document.getElementById("barangKeluar").value = item.barang;
-    document.getElementById("jumlahKeluar").value = item.jumlah;
-
-    editIndexKeluar = index;
-
-    // KUNCI INPUT ANGKA JUMLAH KELUAR
-    document.getElementById("jumlahKeluar").readOnly = true;
+    data.splice(index, 1);
+    setData("keluar", data);
+    loadData();
 }
 
-/* ==========================================================================
-   MODUL: PENGELUARAN & OPERASIONAL BIAYA
-   ========================================================================== */
+/* =========================
+   PENGELUARAN
+========================= */
 function tambahPengeluaran(){
     let data = getData("pengeluaran");
-    let namaBiaya = document.getElementById("namaPengeluaran").value.trim();
-    let nominal = Number(document.getElementById("nilaiPengeluaran").value.replace(/\./g,'')) || 0;
-
-    if (!namaBiaya || nominal <= 0) {
-        alert("Mohon isi deskripsi pengeluaran dan nilai nominal dengan benar!");
-        return;
-    }
-
-    if (editIndexPengeluaran >= 0) {
-        // Mode Edit: Simpan deskripsi baru dengan nominal lama (dikunci)
-        let itemLama = data[editIndexPengeluaran];
-        data[editIndexPengeluaran] = {
-            nama: namaBiaya,
-            total: itemLama.total, // Tetap menggunakan nominal lama (dikunci)
-            tanggal: itemLama.tanggal || tanggalHariIni()
-        };
-
-        editIndexPengeluaran = -1;
-        document.getElementById("nilaiPengeluaran").readOnly = false; // Buka kunci input
-    } else {
-        // Mode Tambah Baru
-        data.push({
-            nama: namaBiaya,
-            total: nominal,
-            tanggal: tanggalHariIni()
-        });
-    }
+    data.push({
+        nama: document.getElementById("namaPengeluaran").value,
+        total: document.getElementById("nilaiPengeluaran").value,
+        tanggal: tanggalHariIni()
+    });
 
     setData("pengeluaran", data);
     document.getElementById("namaPengeluaran").value="";
@@ -452,11 +347,8 @@ function tampilPengeluaran(){
     data.forEach((item, index)=>{
         html += `
         <li>
-            <span class="text-log">💸 ${item.nama} (<strong>${rupiah(item.total)}</strong>)</span>
-            <div class="log-actions" style="display:inline-block; margin-left: 10px;">
-                <button class="btnedit" onclick="editPengeluaran(${index})">Edit</button>
-                <button class="btnhapus" onclick="hapusPengeluaran(${index})">Hapus</button>
-            </div>
+            ${item.nama} - ${rupiah(item.total)}
+            <button class="btnhapus" onclick="hapusPengeluaran(${index})">Hapus</button>
         </li>`;
     });
 
@@ -464,30 +356,15 @@ function tampilPengeluaran(){
 }
 
 function hapusPengeluaran(index){
-    if(confirm("Hapus pengeluaran ini?")){
-        let data = getData("pengeluaran");
-        data.splice(index, 1);
-        setData("pengeluaran", data);
-        loadData();
-    }
-}
-
-function editPengeluaran(index){
     let data = getData("pengeluaran");
-    let item = data[index];
-
-    document.getElementById("namaPengeluaran").value = item.nama;
-    document.getElementById("nilaiPengeluaran").value = Number(item.total).toLocaleString("id-ID");
-
-    editIndexPengeluaran = index;
-
-    // KUNCI INPUT ANGKA NOMINAL PENGELUARAN
-    document.getElementById("nilaiPengeluaran").readOnly = true;
+    data.splice(index, 1);
+    setData("pengeluaran", data);
+    loadData();
 }
 
-/* ==========================================================================
+/* =========================
    DASHBOARD
-   ========================================================================== */
+========================= */
 function hitungDashboard(){
     let penjualan = getData("penjualan");
     let pengeluaran = getData("pengeluaran");
@@ -498,14 +375,14 @@ function hitungDashboard(){
     let hariIni = tanggalHariIni();
 
     penjualan.forEach(item=>{
-        totalPenjualan += Number(item.total);
+        totalPenjualan += Number(item.total) || 0;
         if(item.tanggal === hariIni){
-            totalHariIni += Number(item.total);
+            totalHariIni += Number(item.total) || 0;
         }
     });
 
     pengeluaran.forEach(item=>{
-        totalPengeluaran += Number(item.total || item.nilai);
+        totalPengeluaran += Number(item.total) || 0;
     });
 
     document.getElementById("penghasilanHariIni").innerHTML = rupiah(totalHariIni);
@@ -514,9 +391,9 @@ function hitungDashboard(){
     document.getElementById("totalPendapatan").innerHTML = rupiah(totalPenjualan - totalPengeluaran);
 }
 
-/* ==========================================================================
-   LOAD ALL DATA
-   ========================================================================== */
+/* =========================
+   LOAD DATA
+========================= */
 function loadData(){
     tampilPenjualan();
     tampilMasuk();
@@ -530,9 +407,9 @@ function loadData(){
     generateNomorPenjualan();
 }
 
-/* ==========================================================================
-   FUNGSI: EXPORT PDF (Lengkap & Bebas Error Nomor Urut)
-   ========================================================================== */
+/* =========================
+   PDF PROFESIONAL (Bebas Error)
+========================= */
 function exportPDF(){
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -540,24 +417,17 @@ function exportPDF(){
     let toko = localStorage.getItem("namaToko") || "NAMA TOKO";
     let cabang = localStorage.getItem("namaCabang") || "-";
     
-    // Ambil data dari LocalStorage
     let penjualan = getData("penjualan");
     let masuk = getData("masuk");
     let keluar = getData("keluar");
     let pengeluaran = getData("pengeluaran");
 
-    // Hitung Total Ringkasan
     let totalJual = 0;
     let totalKeluar = 0;
 
-    penjualan.forEach(item => { 
-        totalJual += Number(item.total) || 0; 
-    });
-    pengeluaran.forEach(item => { 
-        totalKeluar += Number(item.total) || 0; 
-    });
+    penjualan.forEach(item => { totalJual += Number(item.total) || 0; });
+    pengeluaran.forEach(item => { totalKeluar += Number(item.total) || 0; });
 
-    // --- DESIGN HEADER DOKUMEN ---
     doc.setFontSize(18);
     doc.setFont("helvetica", "bold");
     doc.text(toko.toUpperCase(), 14, 18);
@@ -567,11 +437,10 @@ function exportPDF(){
     doc.text("Cabang  : " + cabang, 14, 25);
     doc.text("Tanggal : " + tanggalHariIni(), 14, 30);
     
-    // Garis pembatas header
     doc.setDrawColor(200, 200, 200);
     doc.line(14, 33, 196, 33);
 
-    // I. TABEL RINGKASAN KEUANGAN
+    // I. RINGKASAN KEUANGAN
     doc.autoTable({
         startY: 38,
         head: [[{ content: "I. RINGKASAN KEUANGAN HARI INI", colSpan: 2, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }]],
@@ -595,7 +464,7 @@ function exportPDF(){
                ["No", "Nama Produk / Barang Terjual", "Qty", "Harga Satuan", "Subtotal"]],
         body: penjualan.length > 0 ? 
             penjualan.map((item, index) => [
-                index + 1, // Nomor urut dinamis, dijamin anti-acak 1, 2, 3... dst
+                index + 1, 
                 (item.barang || "").toUpperCase(), 
                 (item.qty || 0) + " Pcs", 
                 rupiah(item.harga), 
@@ -673,12 +542,9 @@ function exportPDF(){
         }
     });
 
-    // Simpan file laporan PDF secara otomatis
     doc.save("Laporan_" + toko.replace(/\s+/g, '_') + "_" + tanggalHariIni().replace(/\//g, '-') + ".pdf");
 }
-/* ==========================================================================
-   PENGHAPUSAN DAN RESET DATA
-========================================================================== */
+
 function hapusSemuaData() {
     const konfirmasi = confirm("Yakin ingin menghapus SEMUA data?");
     if (!konfirmasi) return;
@@ -701,9 +567,6 @@ function hapusSemuaData() {
     alert("Semua data berhasil dihapus!");
 }
 
-/* ==========================================================================
-   REKAP BULANAN / HARIAN (HTML PREVIEW)
-========================================================================== */
 function lihatRekap() {
     const tanggal = document.getElementById("tanggalRekap").value;
     const penjualan = JSON.parse(localStorage.getItem("penjualan")) || [];
@@ -719,8 +582,8 @@ function lihatRekap() {
     let totalJual = 0;
     let totalKeluar = 0;
 
-    jualHari.forEach(x => totalJual += Number(x.total));
-    keluarHari.forEach(x => totalKeluar += Number(x.total));
+    jualHari.forEach(x => totalJual += Number(x.total) || 0);
+    keluarHari.forEach(x => totalKeluar += Number(x.total) || 0);
 
     let html = `
         <h3>📅 Rekapan Tanggal ${tanggal}</h3>
@@ -751,7 +614,7 @@ function lihatRekap() {
         html += `
         <tr>
             <td>${item.nama}</td>
-            <td>Rp ${Number(item.nilai || item.total).toLocaleString("id-ID")}</td>
+            <td>Rp ${Number(item.total).toLocaleString("id-ID")}</td>
         </tr>`;
     });
 
@@ -788,9 +651,9 @@ function formatRupiahInput(input) {
     input.value = Number(value).toLocaleString("id-ID");
 }
 
-/* ==========================================================================
+/* =========================
    MANAJEMEN HALAMAN (NAVIGASI)
-========================================================================== */
+========================= */
 function bukaHalaman(halaman) {
     document.querySelectorAll('.halaman').forEach(el => { el.style.display = 'none'; });
 
@@ -810,9 +673,9 @@ function bukaHalaman(halaman) {
     }
 }
 
-/* ==========================================================================
+/* =========================
    MANAJEMEN STOK BARANG
-========================================================================== */
+========================= */
 function getStokData() {
     const data = localStorage.getItem(STORAGE_KEY_STOK);
     return data ? JSON.parse(data) : {};
@@ -962,6 +825,10 @@ function tampilSemuaStok() {
     let html = '';
     namaBarang.forEach((nama, index) => {
         const jumlah = stok[nama] || 0;
+        let statusClass = 'status-habis';
+        let statusText = 'Habis';
+        if (jumlah > 0) statusClass = 'status-tersedia';
+        if (jumlah > 0 && jumlah <= 5) statusClass = 'status-minim';
 
         html += `
         <tr>
@@ -995,9 +862,62 @@ function tampilNotif(elementId, pesan, tipe) {
     setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
-/* ==========================================================================
-   LOADING OVERLAY INITIALIZATION
-   ========================================================================== */
+/* =========================
+   PROSES TUTUP BUKU HARIAN
+========================= */
+function prosesTutupBuku() {
+    let penjualan = getData("penjualan");
+    let pengeluaran = getData("pengeluaran");
+    let masuk = getData("masuk");
+    let keluar = getData("keluar");
+
+    if (penjualan.length === 0 && pengeluaran.length === 0 && masuk.length === 0 && keluar.length === 0) {
+        alert("⚠️ Tidak ada data transaksi aktif hari ini untuk ditutup buku!");
+        return;
+    }
+
+    const konfirmasi1 = confirm(
+        "⚠️ PROSES TUTUP BUKU HARIAN\n\n" +
+        "Tindakan ini akan:\n" +
+        "1. Mengarsipkan seluruh transaksi hari ini ke database riwayat.\n" +
+        "2. Mengosongkan tabel transaksi aktif agar siap untuk hari baru.\n" +
+        "3. STOK BARANG TETAP TERJAGA (tidak direset).\n\n" +
+        "Apakah Anda yakin ingin memproses Tutup Buku?"
+    );
+    if (!konfirmasi1) return;
+
+    const konfirmasi2 = confirm("Sangat disarankan untuk melakukan 'Export Laporan PDF' terlebih dahulu sebelum Tutup Buku. Apakah Anda ingin langsung melanjutkan Tutup Buku sekarang?");
+    if (!konfirmasi2) return;
+
+    try {
+        let arsipLama = JSON.parse(localStorage.getItem("arsipTutupBuku")) || [];
+        
+        let dataTutupBukuHariIni = {
+            tanggalTutupBuku: tanggalHariIni(),
+            timestamp: new Date().toISOString(),
+            penjualan: penjualan,
+            pengeluaran: pengeluaran,
+            masuk: masuk,
+            keluar: keluar
+        };
+
+        arsipLama.push(dataTutupBukuHariIni);
+        localStorage.setItem("arsipTutupBuku", JSON.stringify(arsipLama));
+
+        localStorage.removeItem("penjualan");
+        localStorage.removeItem("pengeluaran");
+        localStorage.removeItem("masuk");
+        localStorage.removeItem("keluar");
+
+        loadData();
+
+        alert("✅ PROSES TUTUP BUKU BERHASIL!\n\nSeluruh transaksi aktif telah diarsipkan dengan aman. Aplikasi Anda sekarang siap digunakan untuk mencatat transaksi hari baru.");
+    } catch (error) {
+        console.error("Gagal melakukan proses tutup buku:", error);
+        alert("❌ Terjadi kesalahan sistem saat memproses Tutup Buku. Silakan coba lagi.");
+    }
+}
+
 window.addEventListener('load', () => {
     const overlay = document.getElementById('loadingOverlay');
     if (!overlay) return;
