@@ -568,29 +568,64 @@ function hapusSemuaData() {
 }
 
 function lihatRekap() {
-    const tanggal = document.getElementById("tanggalRekap").value;
-    const penjualan = JSON.parse(localStorage.getItem("penjualan")) || [];
-    const pengeluaran = JSON.parse(localStorage.getItem("pengeluaran")) || [];
-    const barangMasuk = JSON.parse(localStorage.getItem("masuk")) || [];
-    const barangKeluar = JSON.parse(localStorage.getItem("keluar")) || [];
+    const tanggalInput = document.getElementById("tanggalRekap").value;
+    if (!tanggalInput) {
+        alert("Silakan pilih tanggal terlebih dahulu!");
+        return;
+    }
 
-    const jualHari = penjualan.filter(x => x.tanggal === tanggal);
-    const keluarHari = pengeluaran.filter(x => x.tanggal === tanggal);
-    const masukHari = barangMasuk.filter(x => x.tanggal === tanggal);
-    const barangKeluarHari = barangKeluar.filter(x => x.tanggal === tanggal);
+    // Format tanggal input (YYYY-MM-DD) ke format lokal (DD/MM/YYYY) agar cocok dengan sistem
+    const parts = tanggalInput.split("-");
+    const tanggalFormatLokal = `${parts[2]}/${parts[1]}/${parts[0]}`;
 
+    // 1. Ambil data aktif saat ini
+    const penjualanAktif = JSON.parse(localStorage.getItem("penjualan")) || [];
+    const pengeluaranAktif = JSON.parse(localStorage.getItem("pengeluaran")) || [];
+    const masukAktif = JSON.parse(localStorage.getItem("masuk")) || [];
+    const keluarAktif = JSON.parse(localStorage.getItem("keluar")) || [];
+
+    // Filter data aktif yang cocok dengan tanggal terpilih
+    let gabunganPenjualan = penjualanAktif.filter(x => x.tanggal === tanggalFormatLokal);
+    let gabunganPengeluaran = pengeluaranAktif.filter(x => x.tanggal === tanggalFormatLokal);
+    let gabunganMasuk = masukAktif.filter(x => x.tanggal === tanggalFormatLokal);
+    let gabunganKeluar = keluarAktif.filter(x => x.tanggal === tanggalFormatLokal);
+
+    // 2. Ambil data dari arsip Tutup Buku (historis)
+    const arsipTutupBuku = JSON.parse(localStorage.getItem("arsipTutupBuku")) || [];
+    
+    // Cari apakah ada arsip yang cocok dengan tanggal tersebut
+    arsipTutupBuku.forEach(arsip => {
+        if (arsip.tanggalTutupBuku === tanggalFormatLokal) {
+            if (arsip.penjualan) gabunganPenjualan = gabunganPenjualan.concat(arsip.penjualan);
+            if (arsip.pengeluaran) gabunganPengeluaran = gabunganPengeluaran.concat(arsip.pengeluaran);
+            if (arsip.masuk) gabunganMasuk = gabunganMasuk.concat(arsip.masuk);
+            if (arsip.keluar) gabunganKeluar = gabunganKeluar.concat(arsip.keluar);
+        }
+    });
+
+    // Jika tidak ada data sama sekali di tanggal tersebut
+    if (gabunganPenjualan.length === 0 && gabunganPengeluaran.length === 0 && gabunganMasuk.length === 0 && gabunganKeluar.length === 0) {
+        document.getElementById("hasilRekap").innerHTML = `
+            <p class="placeholder-text" style="color: #dc2626; font-weight: bold;">
+                ⚠️ Tidak ada rekapan transaksi atau arsip tutup buku ditemukan untuk tanggal ${tanggalFormatLokal}.
+            </p>`;
+        return;
+    }
+
+    // Hitung total finansial gabungan
     let totalJual = 0;
     let totalKeluar = 0;
+    gabunganPenjualan.forEach(x => totalJual += Number(x.total) || 0);
+    gabunganPengeluaran.forEach(x => totalKeluar += Number(x.total) || 0);
 
-    jualHari.forEach(x => totalJual += Number(x.total) || 0);
-    keluarHari.forEach(x => totalKeluar += Number(x.total) || 0);
-
+    // Render tampilan ke HTML
     let html = `
-        <h3>📅 Rekapan Tanggal ${tanggal}</h3>
+        <h3>📅 Rekapan Tanggal ${tanggalFormatLokal}</h3>
         <hr>
         <h3>🛒 Penjualan Barang</h3>
         <table>
         <tr>
+            <th>No</th>
             <th>Barang</th>
             <th>Qty</th>
             <th>Harga</th>
@@ -598,44 +633,64 @@ function lihatRekap() {
         </tr>
     `;
 
-    jualHari.forEach(item => {
-        html += `
-        <tr>
-            <td>${item.barang}</td>
-            <td>${item.qty}</td>
-            <td>Rp ${Number(item.harga).toLocaleString("id-ID")}</td>
-            <td>Rp ${Number(item.total).toLocaleString("id-ID")}</td>
-        </tr>`;
-    });
+    if (gabunganPenjualan.length > 0) {
+        gabunganPenjualan.forEach((item, index) => {
+            html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${item.barang}</td>
+                <td>${item.qty} Pcs</td>
+                <td>${rupiah(item.harga)}</td>
+                <td>${rupiah(item.total)}</td>
+            </tr>`;
+        });
+    } else {
+        html += `<tr><td colspan="5" style="text-align:center; color:#94a3b8;">Tidak ada transaksi penjualan</td></tr>`;
+    }
 
-    html += `</table><h3>💸 Pengeluaran Toko</h3><table><tr><th>Nama</th><th>Jumlah</th></tr>`;
+    html += `</table><h3>💸 Pengeluaran Toko</h3><table><tr><th>No</th><th>Nama Kebutuhan</th><th>Jumlah</th></tr>`;
 
-    keluarHari.forEach(item => {
-        html += `
-        <tr>
-            <td>${item.nama}</td>
-            <td>Rp ${Number(item.total).toLocaleString("id-ID")}</td>
-        </tr>`;
-    });
+    if (gabunganPengeluaran.length > 0) {
+        gabunganPengeluaran.forEach((item, index) => {
+            html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${item.nama}</td>
+                <td>${rupiah(item.total)}</td>
+            </tr>`;
+        });
+    } else {
+        html += `<tr><td colspan="3" style="text-align:center; color:#94a3b8;">Tidak ada pengeluaran operasional</td></tr>`;
+    }
 
-    html += `</table><h3>📦 Barang Masuk</h3><table><tr><th>Barang</th><th>Jumlah</th></tr>`;
+    html += `</table><h3>📦 Logistik Masuk</h3><table><tr><th>No</th><th>Barang</th><th>Jumlah</th></tr>`;
 
-    masukHari.forEach(item => {
-        html += `<tr><td>${item.barang}</td><td>${item.jumlah}</td></tr>`;
-    });
+    if (gabunganMasuk.length > 0) {
+        gabunganMasuk.forEach((item, index) => {
+            html += `<tr><td>${index + 1}</td><td>${item.barang}</td><td>${item.jumlah} Pcs</td></tr>`;
+        });
+    } else {
+        html += `<tr><td colspan="3" style="text-align:center; color:#94a3b8;">Tidak ada logistik masuk</td></tr>`;
+    }
 
-    html += `</table><h3>📤 Barang Keluar</h3><table><tr><th>Barang</th><th>Jumlah</th></tr>`;
+    html += `</table><h3>📤 Logistik Keluar</h3><table><tr><th>No</th><th>Barang</th><th>Jumlah</th></tr>`;
 
-    barangKeluarHari.forEach(item => {
-        html += `<tr><td>${item.barang}</td><td>${item.jumlah}</td></tr>`;
-    });
+    if (gabunganKeluar.length > 0) {
+        gabunganKeluar.forEach((item, index) => {
+            html += `<tr><td>${index + 1}</td><td>${item.barang}</td><td>${item.jumlah} Pcs</td></tr>`;
+        });
+    } else {
+        html += `<tr><td colspan="3" style="text-align:center; color:#94a3b8;">Tidak ada logistik keluar</td></tr>`;
+    }
 
     html += `
     </table>
     <hr>
-    <h2>Total Penjualan : Rp ${totalJual.toLocaleString("id-ID")}</h2>
-    <h2>Total Pengeluaran : Rp ${totalKeluar.toLocaleString("id-ID")}</h2>
-    <h2>Total Pendapatan : Rp ${(totalJual-totalKeluar).toLocaleString("id-ID")}</h2>
+    <div style="margin-top: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #2563eb;">
+        <h4 style="margin: 5px 0;">💰 Total Penjualan (Omzet) : <span style="color: #16a34a;">${rupiah(totalJual)}</span></h4>
+        <h4 style="margin: 5px 0;">💸 Total Pengeluaran Toko  : <span style="color: #dc2626;">${rupiah(totalKeluar)}</span></h4>
+        <h3 style="margin: 10px 0 5px 0; border-top: 1px dashed #cbd5e1; padding-top: 10px;">📈 Pendapatan Bersih (Net) : <span style="color: #2563eb;">${rupiah(totalJual - totalKeluar)}</span></h3>
+    </div>
     `;
 
     document.getElementById("hasilRekap").innerHTML = html;
