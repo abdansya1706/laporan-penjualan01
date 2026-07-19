@@ -1,42 +1,88 @@
-/* =========================
-   STORAGE KEYS (harus di atas agar tidak TDZ)
-========================= */
+/* ==========================================================================
+   PERSISTENSI & KUNCI PENYIMPANAN LOCALSTORAGE
+   ========================================================================== */
 const STORAGE_KEY_STOK = 'stokBarang';
-let editIndex = -1;
+const STORAGE_KEY_PENJUALAN = 'penjualan';
+const STORAGE_KEY_PENGELUARAN = 'pengeluaran';
+const STORAGE_KEY_MASUK = 'masuk';
+const STORAGE_KEY_KELUAR = 'keluar';
+const STORAGE_KEY_REKAP_MASTER = 'rekapanHarianMaster';
 
-/* =========================
-   LOAD AWAL
-========================= */
-loadData();
-loadProfil();
-initStokDariDaftarBarang();
+// Variabel Tracker Global untuk Mode Edit di Semua Dashboard
+let editIndexPenjualan = -1;
+let editIndexPengeluaran = -1;
+let editIndexMasuk = -1;
+let editIndexKeluar = -1;
 
-/* =========================
-   UTILITAS
-========================= */
+// Sinkronisasi Inisialisasi Sistem
+document.addEventListener('DOMContentLoaded', () => {
+    initStokDariDaftarBarang();
+    loadData();
+    loadProfil();
+    
+    const inputTanggal = document.getElementById("tanggalRekap");
+    if(inputTanggal) inputTanggal.value = dapatkanTanggalYMD();
+    
+    hideLoading();
+});
+
+/* ==========================================================================
+   FUNGSI INDIKATOR LOADING & UTILITAS
+   ========================================================================== */
+function showLoading() {
+    document.getElementById('loadingOverlay').classList.add('show');
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('show');
+}
+
 function rupiah(angka){
     return "Rp " + Number(angka || 0).toLocaleString("id-ID");
 }
 
 function tanggalHariIni(){
-    return new Date().toLocaleDateString("id-ID");
+    const d = new Date();
+    return d.toLocaleDateString("id-ID");
+}
+
+function dapatkanTanggalYMD() {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
 function getData(key){
     return JSON.parse(localStorage.getItem(key)) || [];
 }
 
-function setData(key,data){
+function setData(key, data){
     localStorage.setItem(key, JSON.stringify(data));
 }
 
-/* =========================
-   PROFIL TOKO
-========================= */
+function formatRupiahInput(input) {
+    let value = input.value.replace(/\D/g, '');
+    input.value = value ? Number(value).toLocaleString("id-ID") : "";
+}
+
+function bukaHalaman(halaman) {
+    document.querySelectorAll('.halaman').forEach(el => el.style.display = 'none');
+    const target = document.getElementById('halaman-' + halaman);
+    if (target) target.style.display = 'block';
+
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    const currentBtn = document.getElementById('nav-' + halaman);
+    if (currentBtn) currentBtn.classList.add('active');
+}
+
+/* ==========================================================================
+   PROFIL CONFIGURATION
+   ========================================================================== */
 function simpanProfilToko(){
-    localStorage.setItem("namaToko", document.getElementById("namaToko").value);
-    localStorage.setItem("namaCabang", document.getElementById("namaCabang").value);
-    alert("Profil toko berhasil disimpan");
+    localStorage.setItem("namaToko", document.getElementById("namaToko").value.toUpperCase());
+    localStorage.setItem("namaCabang", document.getElementById("namaCabang").value.toUpperCase());
+    alert("✅ Konfigurasi profil cabang toko berhasil diperbarui!");
 }
 
 function loadProfil(){
@@ -44,361 +90,481 @@ function loadProfil(){
     document.getElementById("namaCabang").value = localStorage.getItem("namaCabang") || "";
 }
 
-/* =========================
-   TOTAL OTOMATIS
-========================= */
 function hitungTotal(){
     let jumlah = Number(document.getElementById("qty").value) || 0;
-    let harga = Number(document.getElementById("harga").value.replace(/\./g,'')) || 0;
+    // Membersihkan format titik ribuan agar kalkulasi matematis akurat
+    let hargaRaw = document.getElementById("harga").value.replace(/\./g,'');
+    let harga = Number(hargaRaw) || 0;
     document.getElementById("total").value = jumlah * harga;
 }
 
-/* =========================
-   PENJUALAN
-========================= */
-function tambahPenjualan(){
-    console.log('[DEBUG] tambahPenjualan() dipanggil');
+/* ==========================================================================
+   CORE LOGIC: PROSES OTOMATISASI REKAPAN PERMANEN (PRO)
+   ========================================================================== */
+function sinkronisasiKeRekapMasterOtomatis() {
+    const tglKunci = dapatkanTanggalYMD();
+    let rekapMaster = JSON.parse(localStorage.getItem(STORAGE_KEY_REKAP_MASTER)) || {};
 
-    let data = getData("penjualan");
-    let namaBarang = document.getElementById("barang").value.trim().toUpperCase();
-    let qtyJual = Number(document.getElementById("qty").value) || 0;
-    let hargaJual = Number(document.getElementById("harga").value.replace(/\./g,'')) || 0;
+    const penjualan = getData(STORAGE_KEY_PENJUALAN);
+    const pengeluaran = getData(STORAGE_KEY_PENGELUARAN);
+    const masuk = getData(STORAGE_KEY_MASUK);
+    const keluar = getData(STORAGE_KEY_KELUAR);
 
-    if (!namaBarang || qtyJual <= 0 || hargaJual <= 0) {
-        alert("Silakan lengkapi Nama Barang, Jumlah, dan Harga dengan benar!");
-        return;
-    }
-
-    let item = {
-        no: (editIndex >= 0) ? data[editIndex].no : data.length + 1,
-        barang: namaBarang,
-        qty: qtyJual,
-        harga: hargaJual,
-        total: document.getElementById("total").value,
-        tanggal: (editIndex >= 0) ? data[editIndex].tanggal : tanggalHariIni()
+    rekapMaster[tglKunci] = {
+        penjualan: penjualan.filter(x => x.tanggalKunci === tglKunci || x.tanggal === tanggalHariIni()),
+        pengeluaran: pengeluaran,
+        masuk: masuk,
+        keluar: keluar
     };
 
-    // ===== OTOMATIS KURANGI/KEMBALIKAN STOK SAAT JUAL =====
-    if (namaBarang && qtyJual > 0) {
-        const stok = getStokData();
+    localStorage.setItem(STORAGE_KEY_REKAP_MASTER, JSON.stringify(rekapMaster));
+}
 
-        if (editIndex >= 0) {
-            const oldItem = data[editIndex];
-            const oldNama = oldItem.barang.toUpperCase();
-            const oldQty = Number(oldItem.qty) || 0;
-            if (oldNama && oldQty > 0) {
-                stok[oldNama] = (stok[oldNama] || 0) + oldQty;
-            }
+function bukaModalTutupBuku() {
+    if (confirm("🔒 Anda ingin melakukan PROSES TUTUP BUKU?\n\nTindakan ini akan memigrasi data hari ini ke rekapan permanen dan mengosongkan layar kerja aktif agar esok hari tim karyawan Anda dapat langsung bekerja bersih tanpa perlu menghapus manual.")) {
+        showLoading();
+        setTimeout(() => {
+            sinkronisasiKeRekapMasterOtomatis();
+            
+            localStorage.removeItem(STORAGE_KEY_PENJUALAN);
+            localStorage.removeItem(STORAGE_KEY_PENGELUARAN);
+            localStorage.removeItem(STORAGE_KEY_MASUK);
+            localStorage.removeItem(STORAGE_KEY_KELUAR);
+
+            loadData();
+            hideLoading();
+            alert("✅ Sukses Tutup Buku! Seluruh teks & tabel diarsipkan. Lembar kerja siap digunakan kembali.");
+        }, 600);
+    }
+}
+
+function lihatRekap() {
+    showLoading();
+    setTimeout(() => {
+        const tglDipilih = document.getElementById("tanggalRekap").value;
+        if(!tglDipilih) {
+            hideLoading();
+            alert("Silakan tentukan tanggal target arsip terlebih dahulu.");
+            return;
+        }
+
+        const rekapMaster = JSON.parse(localStorage.getItem(STORAGE_KEY_REKAP_MASTER)) || {};
+        const dataHariItu = rekapMaster[tglDipilih];
+
+        if (!dataHariItu) {
+            document.getElementById("hasilRekap").innerHTML = `<p class="placeholder-text">❌ Tidak ditemukan riwayat rekapan data pada tanggal ${tglDipilih}.</p>`;
+            hideLoading();
+            return;
+        }
+
+        let totalJual = 0; let totalKeluar = 0;
+        let html = `<h3>📅 Hasil Rekap Log Cabang: ${tglDipilih}</h3><hr style="margin:12px 0; border:0; border-top:1px solid #cbd5e1;">`;
+
+        html += `<h4>🛒 Penjualan Terarsip</h4><table class="modern-table"><thead><tr><th>Barang</th><th>Qty</th><th>Harga</th><th>Total</th></tr></thead><tbody>`;
+        if(dataHariItu.penjualan && dataHariItu.penjualan.length > 0) {
+            dataHariItu.penjualan.forEach(x => {
+                totalJual += Number(x.total);
+                html += `<tr><td>${x.barang}</td><td>${x.qty}</td><td>${rupiah(x.harga)}</td><td>${rupiah(x.total)}</td></tr>`;
+            });
+        } else { html += `<tr><td colspan="4">Tidak ada penjualan.</td></tr>`; }
+        html += `</tbody></table>`;
+
+        html += `<h4 style="margin-top:16px;">💸 Pengeluaran Operasional</h4><table class="modern-table"><thead><tr><th>Keperluan</th><th>Nominal</th></tr></thead><tbody>`;
+        if(dataHariItu.pengeluaran && dataHariItu.pengeluaran.length > 0) {
+            dataHariItu.pengeluaran.forEach(x => {
+                totalKeluar += Number(x.total);
+                html += `<tr><td>${x.nama}</td><td>${rupiah(x.total)}</td></tr>`;
+            });
+        } else { html += `<tr><td colspan="2">Tidak ada pengeluaran.</td></tr>`; }
+        html += `</tbody></table>`;
+
+        html += `
+        <div style="margin-top:16px; background:#fff; padding:16px; border-radius:8px; border:1px solid #e2e8f0;">
+            <p><strong>Total Penjualan:</strong> ${rupiah(totalJual)}</p>
+            <p><strong>Total Pengeluaran:</strong> ${rupiah(totalKeluar)}</p>
+            <p style="font-size:16px; color:var(--success)"><strong>Profit Bersih:</strong> ${rupiah(totalJual - totalKeluar)}</p>
+        </div>`;
+
+        document.getElementById("hasilRekap").innerHTML = html;
+        hideLoading();
+    }, 500);
+}
+
+/* ==========================================================================
+   1. DASHBOARD UTAMA: PENJUALAN CONTROLLER
+   ========================================================================== */
+function tambahPenjualan(){
+    showLoading();
+    setTimeout(() => {
+        let data = getData(STORAGE_KEY_PENJUALAN);
+        let namaBarang = document.getElementById("barang").value.trim().toUpperCase();
+        let qtyJual = Number(document.getElementById("qty").value) || 0;
+        let hargaJual = Number(document.getElementById("harga").value.replace(/\./g,'')) || 0;
+
+        if (!namaBarang || qtyJual <= 0 || hargaJual <= 0) {
+            hideLoading();
+            alert("⚠️ Lengkapi Nama Barang, Qty, dan Harga dengan valid!");
+            return;
+        }
+
+        const stok = getStokData();
+        if (editIndexPenjualan >= 0) {
+            const oldItem = data[editIndexPenjualan];
+            stok[oldItem.barang] = (stok[oldItem.barang] || 0) + oldItem.qty;
         }
 
         const stokSaatIni = stok[namaBarang] || 0;
-
         if (stokSaatIni < qtyJual) {
-            if (!confirm(
-                '⚠️ STOK TIDAK MENCUKUPI\n\n' +
-                'Barang: ' + namaBarang + '\n' +
-                'Stok tersedia: ' + stokSaatIni + '\n' +
-                'Dibutuhkan: ' + qtyJual + '\n\n' +
-                'Tetap lanjutkan penjualan?'
-            )) {
-                if (editIndex >= 0) {
-                    const oldItem = data[editIndex];
-                    const oldNama = oldItem.barang.toUpperCase();
-                    const oldQty = Number(oldItem.qty) || 0;
-                    if (oldNama && oldQty > 0) {
-                        stok[oldNama] = Math.max(0, (stok[oldNama] || 0) - oldQty);
-                    }
-                }
+            if (!confirm(`⚠️ STOK MINIM: ${namaBarang}\nSisa gudang: ${stokSaatIni}. Tetap lanjutkan penjualan?`)) {
+                loadData();
+                hideLoading();
                 return;
             }
-            stok[namaBarang] = 0;
+        }
+        
+        stok[namaBarang] = Math.max(0, stokSaatIni - qtyJual);
+        setStokData(stok);
+
+        let item = {
+            no: editIndexPenjualan >= 0 ? data[editIndexPenjualan].no : data.length + 1,
+            barang: namaBarang,
+            qty: qtyJual,
+            harga: hargaJual,
+            total: document.getElementById("total").value,
+            tanggal: tanggalHariIni(),
+            tanggalKunci: dapatkanTanggalYMD()
+        };
+
+        if(editIndexPenjualan >= 0){
+            data[editIndexPenjualan] = item;
+            editIndexPenjualan = -1;
         } else {
-            stok[namaBarang] = stokSaatIni - qtyJual;
+            data.push(item);
         }
 
-        setStokData(stok);
-    }
+        // Penataan ulang nomor agar tetap responsif berurutan
+        data = data.map((x, idx) => { x.no = idx + 1; return x; });
+        setData(STORAGE_KEY_PENJUALAN, data);
+        
+        document.getElementById("barang").value="";
+        document.getElementById("qty").value="";
+        document.getElementById("harga").value="";
+        document.getElementById("total").value="";
 
-    if(editIndex >= 0){
-        data[editIndex] = item;
-        editIndex = -1;
-    } else {
-        data.push(item);
-    }
-
-    setData("penjualan", data);
-
-    document.getElementById("barang").value="";
-    document.getElementById("qty").value="";
-    document.getElementById("harga").value="";
-    document.getElementById("total").value="";
-
-    // Menjaga agar form tidak terkunci/readonly
-    document.getElementById("qty").readOnly = false;
-    document.getElementById("harga").readOnly = false;
-
-    loadData();
+        sinkronisasiKeRekapMasterOtomatis();
+        loadData();
+        hideLoading();
+    }, 400);
 }
 
 function tampilPenjualan(){
-    let data = getData("penjualan");
-    let html="";
-
-    data.forEach((item, index)=>{
+    let data = getData(STORAGE_KEY_PENJUALAN);
+    let html = "";
+    data.forEach((item, index) => {
         html += `
         <tr>
-            <td>${index + 1}</td>
-            <td>${item.barang}</td>
+            <td>${item.no}</td>
+            <td style="text-align:left;">${item.barang}</td>
             <td>${item.qty}</td>
             <td>${rupiah(item.harga)}</td>
             <td>${rupiah(item.total)}</td>
             <td>${item.tanggal}</td>
             <td>
-                <button class="btnedit" onclick="editPenjualan(${index})">Edit</button>
-                <button class="btnhapus" onclick="hapusPenjualan(${index})">Hapus</button>
+                <button class="btn-warning btn-small" onclick="editPenjualan(${index})">✏️ Edit</button>
+                <button class="btn-danger btn-small" onclick="hapusPenjualan(${index})">🗑 Hapus</button>
             </td>
         </tr>`;
     });
-
-    document.getElementById("listPenjualan").innerHTML = html;
-}
-
-function hapusPenjualan(index){
-    if(confirm("Hapus data?")){
-        let data = getData("penjualan");
-        const item = data[index];
-        const namaBarang = (item.barang || '').toUpperCase();
-        const qty = Number(item.qty) || 0;
-        if (namaBarang && qty > 0) {
-            const stok = getStokData();
-            stok[namaBarang] = (stok[namaBarang] || 0) + qty;
-            setStokData(stok);
-        }
-
-        data.splice(index, 1);
-        setData("penjualan", data);
-        loadData();
-    }
+    document.getElementById("listPenjualan").innerHTML = html || '<tr><td colspan="7" style="color:#94a3b8; padding:20px;">Belum ada entri transaksi hari ini.</td></tr>';
 }
 
 function editPenjualan(index){
-    let data = getData("penjualan");
+    let data = getData(STORAGE_KEY_PENJUALAN);
     let item = data[index];
-
-    document.getElementById("no").value = index + 1;
+    document.getElementById("no").value = item.no;
     document.getElementById("barang").value = item.barang;
     document.getElementById("qty").value = item.qty;
     document.getElementById("harga").value = Number(item.harga).toLocaleString("id-ID");
     document.getElementById("total").value = item.total;
-
-    editIndex = index;
-
-    document.getElementById("qty").readOnly = false;
-    document.getElementById("harga").readOnly = false;
+    editIndexPenjualan = index;
+    window.scrollTo({ top: document.getElementById("barang").offsetTop - 100, behavior: 'smooth' });
 }
 
-/* =========================
-   BARANG MASUK
-========================= */
-function tambahMasuk(){
-    let data = getData("masuk");
-    let namaBarang = document.getElementById("barangMasuk").value.trim().toUpperCase();
-    let jumlah = Number(document.getElementById("jumlahMasuk").value) || 0;
-
-    if (!namaBarang || jumlah <= 0) {
-        alert("Nama barang dan jumlah harus diisi dengan benar");
-        return;
-    }
-
-    const stok = getStokData();
-    stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
-    setStokData(stok);
-
-    data.push({
-        barang: namaBarang,
-        jumlah: jumlah,
-        tanggal: tanggalHariIni()
-    });
-
-    setData("masuk", data);
-    document.getElementById("barangMasuk").value="";
-    document.getElementById("jumlahMasuk").value="";
-
-    loadData();
-}
-
-function tampilMasuk(){
-    let data = getData("masuk");
-    let html="";
-
-    data.forEach((item, index)=>{
-        html += `
-        <li>
-            ${item.barang} (${item.jumlah})
-            <button class="btnhapus" onclick="hapusMasuk(${index})">Hapus</button>
-        </li>`;
-    });
-
-    document.getElementById("listMasuk").innerHTML = html;
-}
-
-function hapusMasuk(index){
-    let data = getData("masuk");
-    const item = data[index];
-    const namaBarang = (item.barang || '').toUpperCase();
-    const jumlah = Number(item.jumlah) || 0;
-    if (namaBarang && jumlah > 0) {
+function hapusPenjualan(index){
+    if(confirm("Hapus item data penjualan ini?")){
+        let data = getData(STORAGE_KEY_PENJUALAN);
+        const item = data[index];
+        
         const stok = getStokData();
-        stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
+        stok[item.barang] = (stok[item.barang] || 0) + item.qty;
         setStokData(stok);
+
+        data.splice(index, 1);
+        data = data.map((x, idx) => { x.no = idx + 1; return x; });
+
+        setData(STORAGE_KEY_PENJUALAN, data);
+        sinkronisasiKeRekapMasterOtomatis();
+        loadData();
     }
-
-    data.splice(index, 1);
-    setData("masuk", data);
-    loadData();
 }
 
-/* =========================
-   BARANG KELUAR
-========================= */
-function tambahKeluar(){
-    let data = getData("keluar");
-    let namaBarang = document.getElementById("barangKeluar").value.trim().toUpperCase();
-    let jumlah = Number(document.getElementById("jumlahKeluar").value) || 0;
-
-    if (!namaBarang || jumlah <= 0) {
-        alert("Nama barang dan jumlah harus diisi dengan benar");
-        return;
-    }
-
-    const stok = getStokData();
-    stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
-    setStokData(stok);
-
-    data.push({
-        barang: namaBarang,
-        jumlah: jumlah,
-        tanggal: tanggalHariIni()
-    });
-
-    setData("keluar", data);
-    document.getElementById("barangKeluar").value="";
-    document.getElementById("jumlahKeluar").value="";
-
-    loadData();
-}
-
-function tampilKeluar(){
-    let data = getData("keluar");
-    let html="";
-
-    data.forEach((item, index)=>{
-        html += `
-        <li>
-            ${item.barang} (${item.jumlah})
-            <button class="btnhapus" onclick="hapusKeluar(${index})">Hapus</button>
-        </li>`;
-    });
-
-    document.getElementById("listKeluar").innerHTML = html;
-}
-
-function hapusKeluar(index){
-    let data = getData("keluar");
-    const item = data[index];
-    const namaBarang = (item.barang || '').toUpperCase();
-    const jumlah = Number(item.jumlah) || 0;
-    if (namaBarang && jumlah > 0) {
-        const stok = getStokData();
-        stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
-        setStokData(stok);
-    }
-
-    data.splice(index, 1);
-    setData("keluar", data);
-    loadData();
-}
-
-/* =========================
-   PENGELUARAN
-========================= */
+/* ==========================================================================
+   2. DASHBOARD OPERASIONAL: PENGELUARAN CONTROLLER
+   ========================================================================== */
 function tambahPengeluaran(){
-    let data = getData("pengeluaran");
-    data.push({
-        nama: document.getElementById("namaPengeluaran").value,
-        total: document.getElementById("nilaiPengeluaran").value.replace(/\./g,''),
+    let data = getData(STORAGE_KEY_PENGELUARAN);
+    let nama = document.getElementById("namaPengeluaran").value.trim().toUpperCase();
+    let totalRaw = document.getElementById("nilaiPengeluaran").value.replace(/\./g,'');
+    let total = Number(totalRaw) || 0;
+
+    if(!nama || total <= 0) return alert("Isi parameter pengeluaran secara valid!");
+
+    let item = {
+        no: editIndexPengeluaran >= 0 ? data[editIndexPengeluaran].no : data.length + 1,
+        nama: nama,
+        total: total,
         tanggal: tanggalHariIni()
-    });
+    };
 
-    setData("pengeluaran", data);
-    document.getElementById("namaPengeluaran").value="";
-    document.getElementById("nilaiPengeluaran").value="";
+    if(editIndexPengeluaran >= 0) {
+        data[editIndexPengeluaran] = item;
+        editIndexPengeluaran = -1;
+    } else {
+        data.push(item);
+    }
 
+    data = data.map((x, idx) => { x.no = idx + 1; return x; });
+    setData(STORAGE_KEY_PENGELUARAN, data);
+    
+    document.getElementById("namaPengeluaran").value = "";
+    document.getElementById("nilaiPengeluaran").value = "";
+    
+    sinkronisasiKeRekapMasterOtomatis();
     loadData();
 }
 
 function tampilPengeluaran(){
-    let data = getData("pengeluaran");
-    let html="";
-
-    data.forEach((item, index)=>{
+    let data = getData(STORAGE_KEY_PENGELUARAN);
+    let html = "";
+    data.forEach((item, index) => {
         html += `
-        <li>
-            ${item.nama} - ${rupiah(item.total)}
-            <button class="btnhapus" onclick="hapusPengeluaran(${index})">Hapus</button>
+        <li style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding:6px; background:#f8fafc; border-radius:4px;">
+            <span><strong>${item.no}.</strong> 🔹 ${item.nama} - <strong>${rupiah(item.total)}</strong></span>
+            <div>
+                <button class="btn-warning btn-small" style="padding:2px 6px; font-size:11px;" onclick="editPengeluaran(${index})">✏️</button>
+                <button class="btn-danger btn-small" style="padding:2px 6px; font-size:11px;" onclick="hapusPengeluaran(${index})">🗑</button>
+            </div>
         </li>`;
     });
-
-    document.getElementById("listPengeluaran").innerHTML = html;
+    document.getElementById("listPengeluaran").innerHTML = html || '<li style="color:#94a3b8;">Belum ada pengeluaran hari ini.</li>';
 }
 
-function hapusPengeluaran(index){
-    let data = getData("pengeluaran");
-    data.splice(index, 1);
-    setData("pengeluaran", data);
+function editPengeluaran(index) {
+    let data = getData(STORAGE_KEY_PENGELUARAN);
+    let item = data[index];
+    document.getElementById("namaPengeluaran").value = item.nama;
+    document.getElementById("nilaiPengeluaran").value = Number(item.total).toLocaleString("id-ID");
+    editIndexPengeluaran = index;
+}
+
+function hapusPengeluaran(index) {
+    if(confirm("Hapus item data pengeluaran ini?")){
+        let data = getData(STORAGE_KEY_PENGELUARAN);
+        data.splice(index, 1);
+        data = data.map((x, idx) => { x.no = idx + 1; return x; });
+        setData(STORAGE_KEY_PENGELUARAN, data);
+        sinkronisasiKeRekapMasterOtomatis();
+        loadData();
+    }
+}
+
+/* ==========================================================================
+   3. DASHBOARD LOGISTIK: INVENTARIS BARANG MASUK CONTROLLER
+   ========================================================================== */
+function tambahMasuk(){
+    let data = getData(STORAGE_KEY_MASUK);
+    let namaBarang = document.getElementById("barangMasuk").value.trim().toUpperCase();
+    let jumlah = Number(document.getElementById("jumlahMasuk").value) || 0;
+
+    if (!namaBarang || jumlah <= 0) return alert("Input log masuk tidak valid!");
+
+    const stok = getStokData();
+    // Jika proses edit, kembalikan dlu penambahan stok yang salah sebelumnya
+    if(editIndexMasuk >= 0) {
+        let oldItem = data[editIndexMasuk];
+        stok[oldItem.barang] = Math.max(0, (stok[oldItem.barang] || 0) - oldItem.jumlah);
+    }
+
+    stok[namaBarang] = (stok[namaBarang] || 0) + jumlah;
+    setStokData(stok);
+
+    let item = {
+        no: editIndexMasuk >= 0 ? data[editIndexMasuk].no : data.length + 1,
+        barang: namaBarang,
+        jumlah: jumlah,
+        tanggal: tanggalHariIni()
+    };
+
+    if(editIndexMasuk >= 0) {
+        data[editIndexMasuk] = item;
+        editIndexMasuk = -1;
+    } else {
+        data.push(item);
+    }
+
+    data = data.map((x, idx) => { x.no = idx + 1; return x; });
+    setData(STORAGE_KEY_MASUK, data);
+    
+    document.getElementById("barangMasuk").value = "";
+    document.getElementById("jumlahMasuk").value = "";
+
+    sinkronisasiKeRekapMasterOtomatis();
     loadData();
 }
 
-/* =========================
-   DASHBOARD (DIURUTKAN & DIGABUNG DENGAN ARSIP)
-========================= */
-function hitungDashboard(){
-    let penjualanAktif = getData("penjualan");
-    let pengeluaranAktif = getData("pengeluaran");
-    let arsipTutupBuku = getData("arsipTutupBuku");
+function tampilMasuk(){
+    let data = getData(STORAGE_KEY_MASUK);
+    let html = "";
+    data.forEach((item, index) => { 
+        html += `
+        <li style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding:6px; background:#f8fafc; border-radius:4px;">
+            <span><strong>${item.no}.</strong> 📥 ${item.barang} <mark style="padding:2px 6px; border-radius:4px;">+${item.jumlah} Unit</mark></span>
+            <div>
+                <button class="btn-warning btn-small" style="padding:2px 6px; font-size:11px;" onclick="editMasuk(${index})">✏️</button>
+                <button class="btn-danger btn-small" style="padding:2px 6px; font-size:11px;" onclick="hapusMasuk(${index})">🗑</button>
+            </div>
+        </li>`; 
+    });
+    document.getElementById("listMasuk").innerHTML = html || '<li style="color:#94a3b8;">Belum ada log barang masuk.</li>';
+}
 
-    let totalPenjualan = 0;
-    let totalHariIni = 0;
-    let totalPengeluaran = 0;
+function editMasuk(index) {
+    let data = getData(STORAGE_KEY_MASUK);
+    let item = data[index];
+    document.getElementById("barangMasuk").value = item.barang;
+    document.getElementById("jumlahMasuk").value = item.jumlah;
+    editIndexMasuk = index;
+}
+
+function hapusMasuk(index) {
+    if(confirm("Hapus riwayat penambahan barang masuk ini?")){
+        let data = getData(STORAGE_KEY_MASUK);
+        let item = data[index];
+        
+        // Kurangi stok kembali karena riwayat pasokan dibatalkan/dihapus
+        const stok = getStokData();
+        stok[item.barang] = Math.max(0, (stok[item.barang] || 0) - item.jumlah);
+        setStokData(stok);
+
+        data.splice(index, 1);
+        data = data.map((x, idx) => { x.no = idx + 1; return x; });
+        setData(STORAGE_KEY_MASUK, data);
+        sinkronisasiKeRekapMasterOtomatis();
+        loadData();
+    }
+}
+
+/* ==========================================================================
+   4. DASHBOARD LOGISTIK: INVENTARIS BARANG KELUAR CONTROLLER
+   ========================================================================== */
+function tambahKeluar(){
+    let data = getData(STORAGE_KEY_KELUAR);
+    let namaBarang = document.getElementById("barangKeluar").value.trim().toUpperCase();
+    let jumlah = Number(document.getElementById("jumlahKeluar").value) || 0;
+
+    if (!namaBarang || jumlah <= 0) return alert("Input log keluar tidak valid!");
+
+    const stok = getStokData();
+    // Jika edit, pulihkan dulu pemotongan stok lama
+    if(editIndexKeluar >= 0) {
+        let oldItem = data[editIndexKeluar];
+        stok[oldItem.barang] = (stok[oldItem.barang] || 0) + oldItem.jumlah;
+    }
+
+    stok[namaBarang] = Math.max(0, (stok[namaBarang] || 0) - jumlah);
+    setStokData(stok);
+
+    let item = {
+        no: editIndexKeluar >= 0 ? data[editIndexKeluar].no : data.length + 1,
+        barang: namaBarang,
+        jumlah: jumlah,
+        tanggal: tanggalHariIni()
+    };
+
+    if(editIndexKeluar >= 0) {
+        data[editIndexKeluar] = item;
+        editIndexKeluar = -1;
+    } else {
+        data.push(item);
+    }
+
+    data = data.map((x, idx) => { x.no = idx + 1; return x; });
+    setData(STORAGE_KEY_KELUAR, data);
+    
+    document.getElementById("barangKeluar").value = "";
+    document.getElementById("jumlahKeluar").value = "";
+
+    sinkronisasiKeRekapMasterOtomatis();
+    loadData();
+}
+
+function tampilKeluar(){
+    let data = getData(STORAGE_KEY_KELUAR);
+    let html = "";
+    data.forEach((item, index) => { 
+        html += `
+        <li style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding:6px; background:#f8fafc; border-radius:4px;">
+            <span><strong>${item.no}.</strong> 📤 ${item.barang} <mark style="background:#fee2e2; color:#991b1b; padding:2px 6px; border-radius:4px;">-${item.jumlah} Unit</mark></span>
+            <div>
+                <button class="btn-warning btn-small" style="padding:2px 6px; font-size:11px;" onclick="editKeluar(${index})">✏️</button>
+                <button class="btn-danger btn-small" style="padding:2px 6px; font-size:11px;" onclick="hapusKeluar(${index})">🗑</button>
+            </div>
+        </li>`; 
+    });
+    document.getElementById("listKeluar").innerHTML = html || '<li style="color:#94a3b8;">Belum ada log barang keluar.</li>';
+}
+
+function editKeluar(index) {
+    let data = getData(STORAGE_KEY_KELUAR);
+    let item = data[index];
+    document.getElementById("barangKeluar").value = item.barang;
+    document.getElementById("jumlahKeluar").value = item.jumlah;
+    editIndexKeluar = index;
+}
+
+function hapusKeluar(index) {
+    if(confirm("Hapus riwayat barang keluar ini?")){
+        let data = getData(STORAGE_KEY_KELUAR);
+        let item = data[index];
+
+        // Kembalikan barang ke gudang karena status pengeluaran dibatalkan/dihapus
+        const stok = getStokData();
+        stok[item.barang] = (stok[item.barang] || 0) + item.jumlah;
+        setStokData(stok);
+
+        data.splice(index, 1);
+        data = data.map((x, idx) => { x.no = idx + 1; return x; });
+        setData(STORAGE_KEY_KELUAR, data);
+        sinkronisasiKeRekapMasterOtomatis();
+        loadData();
+    }
+}
+
+/* ==========================================================================
+   UI DATA DISPLAY & INVENTARIS MASTER STOK
+   ========================================================================== */
+function hitungDashboard(){
+    let penjualan = getData(STORAGE_KEY_PENJUALAN);
+    let pengeluaran = getData(STORAGE_KEY_PENGELUARAN);
+
+    let totalPenjualan = 0; let totalHariIni = 0; let totalPengeluaran = 0;
     let hariIni = tanggalHariIni();
 
-    // Hitung dari data aktif
-    penjualanAktif.forEach(item=>{
-        totalPenjualan += Number(item.total) || 0;
-        if(item.tanggal === hariIni){
-            totalHariIni += Number(item.total) || 0;
-        }
+    penjualan.forEach(item => {
+        totalPenjualan += Number(item.total);
+        if(item.tanggal === hariIni) totalHariIni += Number(item.total);
     });
-    pengeluaranAktif.forEach(item=>{
-        totalPengeluaran += Number(item.total) || 0;
-    });
-
-    // Hitung dari arsip tutup buku untuk tanggal hari ini
-    arsipTutupBuku.forEach(arsip => {
-        if (arsip.tanggalTutupBuku === hariIni) {
-            if (arsip.penjualan) {
-                arsip.penjualan.forEach(item => {
-                    totalPenjualan += Number(item.total) || 0;
-                    totalHariIni += Number(item.total) || 0;
-                });
-            }
-            if (arsip.pengeluaran) {
-                arsip.pengeluaran.forEach(item => {
-                    totalPengeluaran += Number(item.total) || 0;
-                });
-            }
-        }
-    });
+    pengeluaran.forEach(item => { totalPengeluaran += Number(item.total); });
 
     document.getElementById("penghasilanHariIni").innerHTML = rupiah(totalHariIni);
     document.getElementById("totalPenjualan").innerHTML = rupiah(totalPenjualan);
@@ -406,586 +572,217 @@ function hitungDashboard(){
     document.getElementById("totalPendapatan").innerHTML = rupiah(totalPenjualan - totalPengeluaran);
 }
 
-/* =========================
-   LOAD DATA
-========================= */
 function loadData(){
     tampilPenjualan();
     tampilMasuk();
     tampilKeluar();
     tampilPengeluaran();
     hitungDashboard();
-
-    if (typeof tampilStok === "function") tampilStok();
-    if (typeof tampilSemuaStok === "function") tampilSemuaStok();
-
-    generateNomorPenjualan();
+    tampilStok();
+    tampilSemuaStok();
+    document.getElementById("no").value = getData(STORAGE_KEY_PENJUALAN).length + 1;
 }
 
-/* =========================
-   PDF PROFESIONAL (Bebas Error)
-========================= */
-function exportPDF(){
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    let toko = localStorage.getItem("namaToko") || "NAMA TOKO";
-    let cabang = localStorage.getItem("namaCabang") || "-";
-    
-    let penjualan = getData("penjualan");
-    let masuk = getData("masuk");
-    let keluar = getData("keluar");
-    let pengeluaran = getData("pengeluaran");
-
-    let totalJual = 0;
-    let totalKeluar = 0;
-
-    penjualan.forEach(item => { totalJual += Number(item.total) || 0; });
-    pengeluaran.forEach(item => { totalKeluar += Number(item.total) || 0; });
-
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text(toko.toUpperCase(), 14, 18);
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("Cabang  : " + cabang, 14, 25);
-    doc.text("Tanggal : " + tanggalHariIni(), 14, 30);
-    
-    doc.setDrawColor(200, 200, 200);
-    doc.line(14, 33, 196, 33);
-
-    // I. RINGKASAN KEUANGAN
-    doc.autoTable({
-        startY: 38,
-        head: [[{ content: "I. RINGKASAN KEUANGAN HARI INI", colSpan: 2, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }]],
-        body: [
-            ["Total Penjualan", rupiah(totalJual)],
-            ["Total Pengeluaran", rupiah(totalKeluar)],
-            ["Total Pendapatan Bersih", rupiah(totalJual - totalKeluar)]
-        ],
-        theme: 'grid',
-        styles: { cellPadding: 3, fontSize: 9 },
-        columnStyles: {
-            0: { fontStyle: 'bold', width: 80 },
-            1: { halign: 'right', fontStyle: 'bold', textColor: [22, 101, 52] }
-        }
-    });
-
-    // II. TABEL PENJUALAN BARANG TERJUAL
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 10,
-        head: [[{ content: "II. RINCIAN BARANG TERJUAL", colSpan: 5, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }],
-               ["No", "Nama Produk / Barang Terjual", "Qty", "Harga Satuan", "Subtotal"]],
-        body: penjualan.length > 0 ? 
-            penjualan.map((item, index) => [
-                index + 1, 
-                (item.barang || "").toUpperCase(), 
-                (item.qty || 0) + " Pcs", 
-                rupiah(item.harga), 
-                rupiah(item.total)
-            ]) : [["-", "Tidak ada transaksi penjualan hari ini.", "-", "-", "-"]],
-        theme: 'grid',
-        styles: { cellPadding: 3, fontSize: 8.5 },
-        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255] },
-        columnStyles: {
-            0: { halign: 'center', width: 12 },
-            1: { halign: 'left' },
-            2: { halign: 'center', width: 20 },
-            3: { halign: 'right', width: 35 },
-            4: { halign: 'right', fontStyle: 'bold', width: 35 }
-        }
-    });
-
-    // III. TABEL BARANG MASUK
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 10,
-        head: [[{ content: "III. BARANG MASUK (LOGISTIK)", colSpan: 3, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }],
-               ["No", "Nama Barang", "Jumlah Masuk"]],
-        body: masuk.length > 0 ? 
-            masuk.map((item, index) => [
-                index + 1, 
-                (item.barang || "").toUpperCase(), 
-                (item.jumlah || 0) + " Pcs"
-            ]) : [["-", "Tidak ada barang masuk hari ini.", "-"]],
-        theme: 'grid',
-        styles: { cellPadding: 3, fontSize: 8.5 },
-        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255] },
-        columnStyles: {
-            0: { halign: 'center', width: 12 },
-            2: { halign: 'center', width: 40 }
-        }
-    });
-
-    // IV. TABEL BARANG KELUAR
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 10,
-        head: [[{ content: "IV. BARANG KELUAR (LOGISTIK)", colSpan: 3, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }],
-               ["No", "Nama Barang", "Jumlah Keluar"]],
-        body: keluar.length > 0 ? 
-            keluar.map((item, index) => [
-                index + 1, 
-                (item.barang || "").toUpperCase(), 
-                (item.jumlah || 0) + " Pcs"
-            ]) : [["-", "Tidak ada barang keluar hari ini.", "-"]],
-        theme: 'grid',
-        styles: { cellPadding: 3, fontSize: 8.5 },
-        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255] },
-        columnStyles: {
-            0: { halign: 'center', width: 12 },
-            2: { halign: 'center', width: 40 }
-        }
-    });
-
-    // V. TABEL PENGELUARAN OPERASIONAL TOKO
-    doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 10,
-        head: [[{ content: "V. OPERASIONAL / PENGELUARAN TOKO", colSpan: 3, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }],
-               ["No", "Deskripsi Pengeluaran", "Total Nominal"]],
-        body: pengeluaran.length > 0 ? 
-            pengeluaran.map((item, index) => [
-                index + 1, 
-                (item.nama || "").toUpperCase(), 
-                rupiah(item.total)
-            ]) : [["-", "Tidak ada pengeluaran operasional hari ini.", "-"]],
-        theme: 'grid',
-        styles: { cellPadding: 3, fontSize: 8.5 },
-        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255] },
-        columnStyles: {
-            0: { halign: 'center', width: 12 },
-            2: { halign: 'right', fontStyle: 'bold', width: 50 }
-        }
-    });
-
-    doc.save("Laporan_" + toko.replace(/\s+/g, '_') + "_" + tanggalHariIni().replace(/\//g, '-') + ".pdf");
-}
-
-function hapusSemuaData() {
-    const konfirmasi = confirm("Yakin ingin menghapus SEMUA data termasuk ARSIP tutup buku?");
-    if (!konfirmasi) return;
-
-    localStorage.removeItem("penjualan");
-    localStorage.removeItem("masuk");
-    localStorage.removeItem("keluar");
-    localStorage.removeItem("pengeluaran");
-    localStorage.removeItem("arsipTutupBuku");
-
-    document.getElementById("listPenjualan").innerHTML = "";
-    document.getElementById("listMasuk").innerHTML = "";
-    document.getElementById("listKeluar").innerHTML = "";
-    document.getElementById("listPengeluaran").innerHTML = "";
-
-    document.getElementById("penghasilanHariIni").innerText = "Rp 0";
-    document.getElementById("totalPenjualan").innerText = "Rp 0";
-    document.getElementById("totalPengeluaran").innerText = "Rp 0";
-    document.getElementById("totalPendapatan").innerText = "Rp 0";
-
-    alert("Semua data berhasil dihapus!");
-}
-
-function lihatRekap() {
-    const tanggalInput = document.getElementById("tanggalRekap").value;
-    if (!tanggalInput) {
-        alert("Silakan pilih tanggal terlebih dahulu!");
-        return;
-    }
-
-    const parts = tanggalInput.split("-");
-    const tanggalFormatLokal = `${parts[2]}/${parts[1]}/${parts[0]}`;
-
-    const penjualanAktif = JSON.parse(localStorage.getItem("penjualan")) || [];
-    const pengeluaranAktif = JSON.parse(localStorage.getItem("pengeluaran")) || [];
-    const masukAktif = JSON.parse(localStorage.getItem("masuk")) || [];
-    const keluarAktif = JSON.parse(localStorage.getItem("keluar")) || [];
-
-    let gabunganPenjualan = penjualanAktif.filter(x => x.tanggal === tanggalFormatLokal);
-    let gabunganPengeluaran = pengeluaranAktif.filter(x => x.tanggal === tanggalFormatLokal);
-    let gabunganMasuk = masukAktif.filter(x => x.tanggal === tanggalFormatLokal);
-    let gabunganKeluar = keluarAktif.filter(x => x.tanggal === tanggalFormatLokal);
-
-    const arsipTutupBuku = JSON.parse(localStorage.getItem("arsipTutupBuku")) || [];
-    
-    arsipTutupBuku.forEach(arsip => {
-        if (arsip.tanggalTutupBuku === tanggalFormatLokal) {
-            if (arsip.penjualan) gabunganPenjualan = gabunganPenjualan.concat(arsip.penjualan);
-            if (arsip.pengeluaran) gabunganPengeluaran = gabunganPengeluaran.concat(arsip.pengeluaran);
-            if (arsip.masuk) gabunganMasuk = gabunganMasuk.concat(arsip.masuk);
-            if (arsip.keluar) gabunganKeluar = gabunganKeluar.concat(arsip.keluar);
-        }
-    });
-
-    if (gabunganPenjualan.length === 0 && gabunganPengeluaran.length === 0 && gabunganMasuk.length === 0 && gabunganKeluar.length === 0) {
-        document.getElementById("hasilRekap").innerHTML = `
-            <p class="placeholder-text" style="color: #dc2626; font-weight: bold;">
-                ⚠️ Tidak ada rekapan transaksi atau arsip tutup buku ditemukan untuk tanggal ${tanggalFormatLokal}.
-            </p>`;
-        return;
-    }
-
-    let totalJual = 0;
-    let totalKeluar = 0;
-    gabunganPenjualan.forEach(x => totalJual += Number(x.total) || 0);
-    gabunganPengeluaran.forEach(x => totalKeluar += Number(x.total) || 0);
-
-    let html = `
-        <h3>📅 Rekapan Tanggal ${tanggalFormatLokal}</h3>
-        <hr>
-        <h3>🛒 Penjualan Barang</h3>
-        <table>
-        <tr>
-            <th>No</th>
-            <th>Barang</th>
-            <th>Qty</th>
-            <th>Harga</th>
-            <th>Total</th>
-        </tr>
-    `;
-
-    if (gabunganPenjualan.length > 0) {
-        gabunganPenjualan.forEach((item, index) => {
-            html += `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${item.barang}</td>
-                <td>${item.qty} Pcs</td>
-                <td>${rupiah(item.harga)}</td>
-                <td>${rupiah(item.total)}</td>
-            </tr>`;
-        });
-    } else {
-        html += `<tr><td colspan="5" style="text-align:center; color:#94a3b8;">Tidak ada transaksi penjualan</td></tr>`;
-    }
-
-    html += `</table><h3>💸 Pengeluaran Toko</h3><table><tr><th>No</th><th>Nama Kebutuhan</th><th>Jumlah</th></tr>`;
-
-    if (gabunganPengeluaran.length > 0) {
-        gabunganPengeluaran.forEach((item, index) => {
-            html += `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${item.nama}</td>
-                <td>${rupiah(item.total)}</td>
-            </tr>`;
-        });
-    } else {
-        html += `<tr><td colspan="3" style="text-align:center; color:#94a3b8;">Tidak ada pengeluaran operasional</td></tr>`;
-    }
-
-    html += `</table><h3>📦 Logistik Masuk</h3><table><tr><th>No</th><th>Barang</th><th>Jumlah</th></tr>`;
-
-    if (gabunganMasuk.length > 0) {
-        gabunganMasuk.forEach((item, index) => {
-            html += `<tr><td>${index + 1}</td><td>${item.barang}</td><td>${item.jumlah} Pcs</td></tr>`;
-        });
-    } else {
-        html += `<tr><td colspan="3" style="text-align:center; color:#94a3b8;">Tidak ada logistik masuk</td></tr>`;
-    }
-
-    html += `</table><h3>📤 Logistik Keluar</h3><table><tr><th>No</th><th>Barang</th><th>Jumlah</th></tr>`;
-
-    if (gabunganKeluar.length > 0) {
-        gabunganKeluar.forEach((item, index) => {
-            html += `<tr><td>${index + 1}</td><td>${item.barang}</td><td>${item.jumlah} Pcs</td></tr>`;
-        });
-    } else {
-        html += `<tr><td colspan="3" style="text-align:center; color:#94a3b8;">Tidak ada logistik keluar</td></tr>`;
-    }
-
-    html += `
-    </table>
-    <hr>
-    <div style="margin-top: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #2563eb;">
-        <h4 style="margin: 5px 0;">💰 Total Penjualan (Omzet) : <span style="color: #16a34a;">${rupiah(totalJual)}</span></h4>
-        <h4 style="margin: 5px 0;">💸 Total Pengeluaran Toko  : <span style="color: #dc2626;">${rupiah(totalKeluar)}</span></h4>
-        <h3 style="margin: 10px 0 5px 0; border-top: 1px dashed #cbd5e1; padding-top: 10px;">📈 Pendapatan Bersih (Net) : <span style="color: #2563eb;">${rupiah(totalJual - totalKeluar)}</span></h3>
-    </div>
-    `;
-
-    document.getElementById("hasilRekap").innerHTML = html;
-}
-
-function generateNomorPenjualan(){
-    let data = getData("penjualan");
-    document.getElementById("no").value = data.length + 1;
-}
-
-function formatRupiahInput(input) {
-    let value = input.value.replace(/\D/g, '');
-    input.value = Number(value).toLocaleString("id-ID");
-}
-
-/* =========================
-   MANAJEMEN HALAMAN (NAVIGASI)
-========================= */
-function bukaHalaman(halaman) {
-    document.querySelectorAll('.halaman').forEach(el => { el.style.display = 'none'; });
-
-    const target = document.getElementById('halaman-' + halaman);
-    if (target) { target.style.display = 'block'; }
-
-    document.querySelectorAll('.nav-btn').forEach(btn => { btn.classList.remove('active'); });
-    const navBtn = document.getElementById('nav-' + halaman);
-    if (navBtn) { navBtn.classList.add('active'); }
-
-    if (halaman === 'lihatStok') {
-        tampilStok();
-    } else if (halaman === 'updateStok') {
-        tampilSemuaStok();
-    } else if (halaman === 'beranda') {
-        loadData();
-    }
-}
-
-/* =========================
-   MANAJEMEN STOK BARANG
-========================= */
-function getStokData() {
-    const data = localStorage.getItem(STORAGE_KEY_STOK);
-    return data ? JSON.parse(data) : {};
-}
-
-function setStokData(stok) {
-    localStorage.setItem(STORAGE_KEY_STOK, JSON.stringify(stok));
-}
+function getStokData() { return JSON.parse(localStorage.getItem(STORAGE_KEY_STOK)) || {}; }
+function setStokData(stok) { localStorage.setItem(STORAGE_KEY_STOK, JSON.stringify(stok)); }
 
 function initStokDariDaftarBarang() {
-    const stok = getStokData();
-    let adaPerubahan = false;
-
+    const stok = getStokData(); let ubah = false;
     if (typeof daftarBarang !== 'undefined') {
         daftarBarang.forEach(nama => {
-            const bersih = nama.trim();
-            if (bersih && !(bersih in stok)) {
-                stok[bersih] = 0;
-                adaPerubahan = true;
-            }
+            const bersih = nama.trim().toUpperCase();
+            if (bersih && !(bersih in stok)) { stok[bersih] = 0; ubah = true; }
         });
     }
-
-    if (adaPerubahan) { setStokData(stok); }
+    if (ubah) setStokData(stok);
 }
 
 function tampilStok() {
     const stok = getStokData();
-    const keyword = (document.getElementById('cariStok').value || '').toUpperCase().trim();
-    let namaBarang = Object.keys(stok);
+    const keyword = (document.getElementById('cariStok')?.value || '').toUpperCase().trim();
+    let keys = Object.keys(stok);
 
-    if (keyword) {
-        namaBarang = namaBarang.filter(nama => nama.toUpperCase().includes(keyword));
-    }
-    namaBarang.sort();
+    if (keyword) keys = keys.filter(n => n.includes(keyword));
+    keys.sort();
 
-    let totalItem = namaBarang.length;
-    let totalTersedia = 0;
-    let totalHabis = 0;
+    let totalItem = keys.length; let tersedia = 0; let habis = 0;
+    keys.forEach(n => { if (stok[n] > 0) tersedia++; else habis++; });
 
-    namaBarang.forEach(nama => {
-        if (stok[nama] > 0) totalTersedia++;
-        else totalHabis++;
-    });
-
-    if (document.getElementById('totalItemStok')) document.getElementById('totalItemStok').textContent = totalItem;
-    if (document.getElementById('totalStokTersedia')) document.getElementById('totalStokTersedia').textContent = totalTersedia;
-    if (document.getElementById('totalStokHabis')) document.getElementById('totalStokHabis').textContent = totalHabis;
+    if(document.getElementById('totalItemStok')) document.getElementById('totalItemStok').textContent = totalItem;
+    if(document.getElementById('totalStokTersedia')) document.getElementById('totalStokTersedia').textContent = tersedia;
+    if(document.getElementById('totalStokHabis')) document.getElementById('totalStokHabis').textContent = habis;
 
     const tbody = document.getElementById('listStok');
-    const kosong = document.getElementById('stokKosong');
-
     if (!tbody) return;
-    if (namaBarang.length === 0) {
-        tbody.innerHTML = '';
-        if(kosong) kosong.style.display = 'block';
-        return;
-    }
-    if(kosong) kosong.style.display = 'none';
+    tbody.innerHTML = "";
 
-    let html = '';
-    namaBarang.forEach((nama, index) => {
-        const jumlah = stok[nama] || 0;
-        let statusClass = 'status-habis';
-        let statusText = 'Habis';
-        
-        if (jumlah > 0) {
-            statusClass = 'status-tersedia';
-            statusText = 'Tersedia (' + jumlah + ')';
-        }
-        if (jumlah > 0 && jumlah <= 5) {
-            statusClass = 'status-minim';
-            statusText = 'Minim (' + jumlah + ')';
-        }
-
-        html += `
-        <tr>
-            <td>${index + 1}</td>
-            <td style="text-align:left;">${nama}</td>
-            <td><strong>${jumlah}</strong></td>
-            <td><span class="${statusClass}">${statusText}</span></td>
-        </tr>`;
+    keys.forEach((nama, i) => {
+        const qty = stok[nama] || 0;
+        let badge = qty === 0 ? `<span class="status-badge status-danger">Habis (0)</span>` : (qty <= 5 ? `<span class="status-badge status-warning">Minim (${qty})</span>` : `<span class="status-badge status-ready">Aman (${qty})</span>`);
+        tbody.innerHTML += `<tr><td>${i+1}</td><td style="text-align:left;">${nama}</td><td><strong>${qty}</strong></td><td>${badge}</td></tr>`;
     });
-    tbody.innerHTML = html;
-}
-
-function tambahStok() {
-    const namaBarang = document.getElementById('stokBarangMasuk').value.trim().toUpperCase();
-    const jumlah = parseInt(document.getElementById('stokJumlahMasuk').value);
-
-    if (!namaBarang) {
-        tampilNotif('notifTambahStok', '❌ Nama barang harus diisi!', 'danger');
-        return;
-    }
-    if (!jumlah || jumlah < 1) {
-        tampilNotif('notifTambahStok', '❌ Jumlah tambahan harus lebih dari 0!', 'danger');
-        return;
-    }
-
-    const stok = getStokData();
-    if (!stok[namaBarang]) { stok[namaBarang] = 0; }
-
-    stok[namaBarang] += jumlah;
-    setStokData(stok);
-
-    tampilNotif('notifTambahStok', '✅ Stok ' + namaBarang + ' berhasil ditambah ' + jumlah + ' unit', 'success');
-    document.getElementById('stokBarangMasuk').value = '';
-    document.getElementById('stokJumlahMasuk').value = '';
-    loadData();
-}
-
-function kurangiStok() {
-    const namaBarang = document.getElementById('stokBarangKeluar').value.trim().toUpperCase();
-    const jumlah = parseInt(document.getElementById('stokJumlahKeluar').value);
-
-    if (!namaBarang) {
-        tampilNotif('notifKurangStok', '❌ Nama barang harus diisi!', 'danger');
-        return;
-    }
-    if (!jumlah || jumlah < 1) {
-        tampilNotif('notifKurangStok', '❌ Jumlah pengurangan harus lebih dari 0!', 'danger');
-        return;
-    }
-
-    const stok = getStokData();
-    if (!stok[namaBarang] || stok[namaBarang] < jumlah) {
-        const stokSaatIni = stok[namaBarang] || 0;
-        tampilNotif('notifKurangStok', '❌ Stok tidak mencukupi! (Sisa: ' + stokSaatIni + ')', 'danger');
-        return;
-    }
-
-    stok[namaBarang] -= jumlah;
-    setStokData(stok);
-
-    tampilNotif('notifKurangStok', '✅ Stok ' + namaBarang + ' berhasil dikurangi', 'success');
-    document.getElementById('stokBarangKeluar').value = '';
-    document.getElementById('stokJumlahKeluar').value = '';
-    loadData();
 }
 
 function tampilSemuaStok() {
     const stok = getStokData();
-    const namaBarang = Object.keys(stok).sort();
     const tbody = document.getElementById('listSemuaStok');
     if (!tbody) return;
-
-    let html = '';
-    namaBarang.forEach((nama, index) => {
-        const jumlah = stok[nama] || 0;
-        html += `
-        <tr>
-            <td>${index + 1}</td>
-            <td style="text-align:left;">${nama}</td>
-            <td><strong>${jumlah}</strong></td>
-        </tr>`;
-    });
-
-    if (namaBarang.length === 0) {
-        html = `<tr><td colspan="3" style="padding:30px;color:#94a3b8;">Belum ada data stok.</td></tr>`;
-    }
-    tbody.innerHTML = html;
+    tbody.innerHTML = Object.keys(stok).sort().map((n, i) => `<tr><td>${i+1}</td><td style="text-align:left;">${n}</td><td><strong>${stok[n]}</strong></td></tr>`).join('');
 }
 
 function resetSemuaStok() {
-    if (!confirm('⚠️ Yakin ingin mereset SEMUA stok ke 0?')) return;
-    const stok = getStokData();
-    Object.keys(stok).forEach(key => { stok[key] = 0; });
-    setStokData(stok);
-    loadData();
-    alert('✅ Semua stok berhasil direset ke 0');
-}
-
-function tampilNotif(elementId, pesan, tipe) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    el.textContent = pesan;
-    el.style.display = 'block';
-    el.className = tipe === 'danger' ? 'notif-danger' : 'notif-success';
-    setTimeout(() => { el.style.display = 'none'; }, 4000);
-}
-
-/* =========================
-   PROSES TUTUP BUKU HARIAN
-========================= */
-function prosesTutupBuku() {
-    let penjualan = getData("penjualan");
-    let pengeluaran = getData("pengeluaran");
-    let masuk = getData("masuk");
-    let keluar = getData("keluar");
-
-    if (penjualan.length === 0 && pengeluaran.length === 0 && masuk.length === 0 && keluar.length === 0) {
-        alert("⚠️ Tidak ada data transaksi aktif hari ini untuk ditutup buku!");
-        return;
-    }
-
-    const konfirmasi1 = confirm(
-        "⚠️ PROSES TUTUP BUKU HARIAN\n\n" +
-        "Tindakan ini akan:\n" +
-        "1. Mengarsipkan seluruh transaksi hari ini ke database riwayat.\n" +
-        "2. Mengosongkan tabel transaksi aktif agar siap untuk hari baru.\n" +
-        "3. STOK BARANG TETAP TERJAGA (tidak direset).\n\n" +
-        "Apakah Anda yakin ingin memproses Tutup Buku?"
-    );
-    if (!konfirmasi1) return;
-
-    const konfirmasi2 = confirm("Sangat disarankan untuk melakukan 'Export Laporan PDF' terlebih dahulu sebelum Tutup Buku. Apakah Anda ingin langsung melanjutkan Tutup Buku sekarang?");
-    if (!konfirmasi2) return;
-
-    try {
-        let arsipLama = JSON.parse(localStorage.getItem("arsipTutupBuku")) || [];
-        
-        let dataTutupBukuHariIni = {
-            tanggalTutupBuku: tanggalHariIni(),
-            timestamp: new Date().toISOString(),
-            penjualan: penjualan,
-            pengeluaran: pengeluaran,
-            masuk: masuk,
-            keluar: keluar
-        };
-
-        arsipLama.push(dataTutupBukuHariIni);
-        localStorage.setItem("arsipTutupBuku", JSON.stringify(arsipLama));
-
-        // Mengosongkan data transaksi aktif
-        localStorage.removeItem("penjualan");
-        localStorage.removeItem("pengeluaran");
-        localStorage.removeItem("masuk");
-        localStorage.removeItem("keluar");
-
-        loadData();
-
-        alert("✅ PROSES TUTUP BUKU BERHASIL!\n\nSeluruh transaksi aktif telah diarsipkan dengan aman. Aplikasi Anda sekarang siap digunakan untuk mencatat transaksi hari baru.");
-    } catch (error) {
-        console.error("Gagal melakukan proses tutup buku:", error);
-        alert("❌ Terjadi kesalahan sistem saat memproses Tutup Buku. Silakan coba lagi.");
+    if (confirm('⚠️ PERINGATAN! Anda ingin mereset seluruh kuantitas stok ke angka 0?')) {
+        const stok = getStokData();
+        Object.keys(stok).forEach(k => { stok[k] = 0; });
+        setStokData(stok); loadData();
     }
 }
 
-window.addEventListener('load', () => {
-    const overlay = document.getElementById('loadingOverlay');
-    if (!overlay) return;
+/* ==========================================================================
+   LAPORAN GENERATOR (DOKUMEN PDF PROFESIONAL - SEMUA DASHBOARD MASUK)
+   ========================================================================== */
+function exportPDF(){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    
+    let toko = localStorage.getItem("namaToko") || "AUDIO MINIATUR";
+    let cabang = localStorage.getItem("namaCabang") || "PUSAT";
 
-    overlay.classList.add('loaded');
-    setTimeout(() => {
-        overlay.classList.add('hidden');
-        setTimeout(() => {
-            overlay.style.display = 'none';
-        }, 450);
-    }, 2200);
-});
+    // --- 1. RENDER KOP HEADER LAPORAN ---
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(30, 41, 59); // Slate 800
+    doc.text(toko, 14, 20);
+    
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139); // Slate 500
+    doc.text(`LAPORAN KINERJA KEUANGAN & LOGISTIK CABANG: ${cabang}`, 14, 26);
+    doc.text(`Tanggal Cetak Dokumen: ${tanggalHariIni()}`, 14, 31);
+    
+    doc.setDrawColor(226, 232, 240); // Slate 200
+    doc.setLineWidth(0.5);
+    doc.line(14, 35, 196, 35);
+
+    // --- 2. TABEL RINGKASAN FINANSIAL DASHBOARD ---
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(51, 65, 85);
+    doc.text("I. REKAPITULASI FINANSIAL UTAMA", 14, 42);
+
+    doc.autoTable({
+        startY: 45,
+        margin: { left: 14, right: 14 },
+        head:[["Kategori Dashboard", "Akumulasi Nilai Buku"]],
+        body:[
+            ["Total Penjualan", document.getElementById("totalPenjualan").innerText],
+            ["Total Pengeluaran Operasional", document.getElementById("totalPengeluaran").innerText],
+            ["Profit Bersih Cabang", document.getElementById("totalPendapatan").innerText]
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold' },
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
+    });
+
+    // --- 3. TABEL DETAIL TRANSAKSI PENJUALAN ---
+    let logJual = getData(STORAGE_KEY_PENJUALAN);
+    let bodyTabelJual = logJual.map(item => [
+        item.no,
+        item.barang,
+        item.qty.toString(),
+        rupiah(item.harga),
+        rupiah(item.total)
+    ]);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(51, 65, 85);
+    doc.text("II. RINCIAN TRANSAKSI PENJUALAN", 14, doc.lastAutoTable.finalY + 10);
+
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 13,
+        margin: { left: 14, right: 14 },
+        head: [["No", "Nama Barang", "Qty", "Harga Satuan", "Total Nilai"]],
+        body: bodyTabelJual.length > 0 ? bodyTabelJual : [["-", "Tidak ada data penjualan hari ini", "-", "-", "-"]],
+        theme: 'striped',
+        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255] },
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        columnStyles: {
+            0: { halign: 'center', width: 10 },
+            2: { halign: 'center', width: 15 },
+            3: { halign: 'right' },
+            4: { halign: 'right' }
+        }
+    });
+
+    // --- 4. TABEL DETAIL PENGELUARAN OPERASIONAL ---
+    let logKeluarUang = getData(STORAGE_KEY_PENGELUARAN);
+    let bodyTabelPengeluaran = logKeluarUang.map(item => [
+        item.no,
+        item.nama,
+        rupiah(item.total),
+        item.tanggal
+    ]);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("III. DAFTAR PENGELUARAN OPERASIONAL", 14, doc.lastAutoTable.finalY + 10);
+
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 13,
+        margin: { left: 14, right: 14 },
+        head: [["No", "Keperluan / Keterangan", "Nominal Pengeluaran", "Tanggal"]],
+        body: bodyTabelPengeluaran.length > 0 ? bodyTabelPengeluaran : [["-", "Tidak ada data pengeluaran hari ini", "-", "-"]],
+        theme: 'striped',
+        headStyles: { fillColor: [148, 163, 184], textColor: [30, 41, 59] },
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        columnStyles: {
+            0: { halign: 'center', width: 10 },
+            2: { halign: 'right' },
+            3: { halign: 'center', width: 30 }
+        }
+    });
+
+    // --- 5. TABEL DETAIL LOGISTIK (BARANG MASUK & KELUAR) ---
+    // Menggunakan pemisah halaman otomatis dari autoTable jika baris sudah terlalu panjang ke bawah
+    doc.setFont("Helvetica", "bold");
+    doc.text("IV. LOG MUTASI BARANG (LOGISTIK INVENTARIS)", 14, doc.lastAutoTable.finalY + 10);
+
+    let logMasukBarang = getData(STORAGE_KEY_MASUK);
+    let logKeluarBarang = getData(STORAGE_KEY_KELUAR);
+
+    // Gabungkan riwayat masuk & keluar menjadi satu struktur tabel logistik yang rapi
+    let bodyLogistik = [];
+    
+    logMasukBarang.forEach(item => {
+        bodyLogistik.push([item.no, item.barang, `+${item.jumlah} Unit`, "Masuk (Pasokan Stok)", item.tanggal]);
+    });
+    
+    logKeluarBarang.forEach(item => {
+        bodyLogistik.push([item.no, item.barang, `-${item.jumlah} Unit`, "Keluar (Manual/BS)", item.tanggal]);
+    });
+
+    // Urutkan ulang nomor baris gabungan mutasi barang agar tetap responsif (1, 2, 3...)
+    bodyLogistik = bodyLogistik.map((row, idx) => {
+        row[0] = idx + 1;
+        return row;
+    });
+
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 13,
+        margin: { left: 14, right: 14 },
+        head: [["No", "Nama Produk/Barang", "Kuantitas", "Jenis Mutasi", "Tanggal Log"]],
+        body: bodyLogistik.length > 0 ? bodyLogistik : [["-", "Tidak ada aktivitas logistik (Masuk/Keluar) hari ini", "-", "-", "-"]],
+        theme: 'striped',
+        headStyles: { fillColor: [100, 116, 139], textColor: [255, 255, 255] },
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        columnStyles: {
+            0: { halign: 'center', width: 10 },
+            2: { halign: 'center', width: 25 },
+            3: { halign: 'center' },
+            4: { halign: 'center', width: 30 }
+        }
+    });
+
+    // Unduh File Dokumen PDF Resmi
+    doc.save(`Laporan_Lengkap_${toko}_${dapatkanTanggalYMD()}.pdf`);
+}
