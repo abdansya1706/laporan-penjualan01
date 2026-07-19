@@ -639,6 +639,37 @@ function resetSemuaStok() {
 }
 
 /* ==========================================================================
+   FUNGSI TAMBAHAN: RESET & HAPUS SEMUA DATA DASHBOARD HARIAN
+   ========================================================================== */
+function resetSemuaDataHarian() {
+    if (confirm("⚠️ PERINGATAN KRITIS!\n\nApakah Anda yakin ingin MENGHAPUS SEMUA DATA transaksi hari ini (Penjualan, Pengeluaran, Barang Masuk, dan Barang Keluar)?\n\nTindakan ini tidak bisa dibatalkan.")) {
+        showLoading();
+        setTimeout(() => {
+            // 1. Menghapus data operasional aktif dari LocalStorage
+            localStorage.removeItem(STORAGE_KEY_PENJUALAN);
+            localStorage.removeItem(STORAGE_KEY_PENGELUARAN);
+            localStorage.removeItem(STORAGE_KEY_MASUK);
+            localStorage.removeItem(STORAGE_KEY_KELUAR);
+
+            // 2. Mereset Tracker Index Edit kembali ke default (-1)
+            editIndexPenjualan = -1;
+            editIndexPengeluaran = -1;
+            editIndexMasuk = -1;
+            editIndexKeluar = -1;
+
+            // 3. Perbarui database rekapan master harian secara otomatis
+            sinkronisasiKeRekapMasterOtomatis();
+
+            // 4. Reload UI untuk membersihkan semua tabel di layar dashboard
+            loadData();
+            hideLoading();
+            
+            alert("✅ Sukses! Seluruh data dashboard transaksi harian telah dibersihkan.");
+        }, 500);
+    }
+}
+
+/* ==========================================================================
    LAPORAN GENERATOR (DOKUMEN PDF PROFESIONAL - SEMUA DASHBOARD MASUK)
    ========================================================================== */
 function exportPDF(){
