@@ -145,7 +145,6 @@ function tampilPenjualan(){
     let html="";
 
     data.forEach((item, index)=>{
-        // Menggunakan index + 1 sebagai nomor urut dinamis
         html += `
         <tr>
             <td>${index + 1}</td>
@@ -186,7 +185,6 @@ function editPenjualan(index){
     let data = getData("penjualan");
     let item = data[index];
 
-    // Tampilkan nomor urut baris di form agar tidak membingungkan
     document.getElementById("no").value = index + 1;
     document.getElementById("barang").value = item.barang;
     document.getElementById("qty").value = item.qty;
@@ -195,7 +193,6 @@ function editPenjualan(index){
 
     editIndex = index;
 
-    // Pastikan input tetap terbuka agar bisa diedit
     document.getElementById("qty").readOnly = false;
     document.getElementById("harga").readOnly = false;
 }
@@ -329,7 +326,7 @@ function tambahPengeluaran(){
     let data = getData("pengeluaran");
     data.push({
         nama: document.getElementById("namaPengeluaran").value,
-        total: document.getElementById("nilaiPengeluaran").value,
+        total: document.getElementById("nilaiPengeluaran").value.replace(/\./g,''),
         tanggal: tanggalHariIni()
     });
 
@@ -363,26 +360,44 @@ function hapusPengeluaran(index){
 }
 
 /* =========================
-   DASHBOARD
+   DASHBOARD (DIURUTKAN & DIGABUNG DENGAN ARSIP)
 ========================= */
 function hitungDashboard(){
-    let penjualan = getData("penjualan");
-    let pengeluaran = getData("pengeluaran");
+    let penjualanAktif = getData("penjualan");
+    let pengeluaranAktif = getData("pengeluaran");
+    let arsipTutupBuku = getData("arsipTutupBuku");
 
     let totalPenjualan = 0;
     let totalHariIni = 0;
     let totalPengeluaran = 0;
     let hariIni = tanggalHariIni();
 
-    penjualan.forEach(item=>{
+    // Hitung dari data aktif
+    penjualanAktif.forEach(item=>{
         totalPenjualan += Number(item.total) || 0;
         if(item.tanggal === hariIni){
             totalHariIni += Number(item.total) || 0;
         }
     });
-
-    pengeluaran.forEach(item=>{
+    pengeluaranAktif.forEach(item=>{
         totalPengeluaran += Number(item.total) || 0;
+    });
+
+    // Hitung dari arsip tutup buku untuk tanggal hari ini
+    arsipTutupBuku.forEach(arsip => {
+        if (arsip.tanggalTutupBuku === hariIni) {
+            if (arsip.penjualan) {
+                arsip.penjualan.forEach(item => {
+                    totalPenjualan += Number(item.total) || 0;
+                    totalHariIni += Number(item.total) || 0;
+                });
+            }
+            if (arsip.pengeluaran) {
+                arsip.pengeluaran.forEach(item => {
+                    totalPengeluaran += Number(item.total) || 0;
+                });
+            }
+        }
     });
 
     document.getElementById("penghasilanHariIni").innerHTML = rupiah(totalHariIni);
@@ -457,7 +472,7 @@ function exportPDF(){
         }
     });
 
-    // II. TABEL PENJUALAN BARANG TERJUAL (Menggunakan Index Dinamis)
+    // II. TABEL PENJUALAN BARANG TERJUAL
     doc.autoTable({
         startY: doc.lastAutoTable.finalY + 10,
         head: [[{ content: "II. RINCIAN BARANG TERJUAL", colSpan: 5, styles: { fillColor: [37, 99, 235], fontStyle: 'bold' } }],
@@ -546,13 +561,14 @@ function exportPDF(){
 }
 
 function hapusSemuaData() {
-    const konfirmasi = confirm("Yakin ingin menghapus SEMUA data?");
+    const konfirmasi = confirm("Yakin ingin menghapus SEMUA data termasuk ARSIP tutup buku?");
     if (!konfirmasi) return;
 
     localStorage.removeItem("penjualan");
     localStorage.removeItem("masuk");
     localStorage.removeItem("keluar");
     localStorage.removeItem("pengeluaran");
+    localStorage.removeItem("arsipTutupBuku");
 
     document.getElementById("listPenjualan").innerHTML = "";
     document.getElementById("listMasuk").innerHTML = "";
@@ -574,26 +590,21 @@ function lihatRekap() {
         return;
     }
 
-    // Format tanggal input (YYYY-MM-DD) ke format lokal (DD/MM/YYYY) agar cocok dengan sistem
     const parts = tanggalInput.split("-");
     const tanggalFormatLokal = `${parts[2]}/${parts[1]}/${parts[0]}`;
 
-    // 1. Ambil data aktif saat ini
     const penjualanAktif = JSON.parse(localStorage.getItem("penjualan")) || [];
     const pengeluaranAktif = JSON.parse(localStorage.getItem("pengeluaran")) || [];
     const masukAktif = JSON.parse(localStorage.getItem("masuk")) || [];
     const keluarAktif = JSON.parse(localStorage.getItem("keluar")) || [];
 
-    // Filter data aktif yang cocok dengan tanggal terpilih
     let gabunganPenjualan = penjualanAktif.filter(x => x.tanggal === tanggalFormatLokal);
     let gabunganPengeluaran = pengeluaranAktif.filter(x => x.tanggal === tanggalFormatLokal);
     let gabunganMasuk = masukAktif.filter(x => x.tanggal === tanggalFormatLokal);
     let gabunganKeluar = keluarAktif.filter(x => x.tanggal === tanggalFormatLokal);
 
-    // 2. Ambil data dari arsip Tutup Buku (historis)
     const arsipTutupBuku = JSON.parse(localStorage.getItem("arsipTutupBuku")) || [];
     
-    // Cari apakah ada arsip yang cocok dengan tanggal tersebut
     arsipTutupBuku.forEach(arsip => {
         if (arsip.tanggalTutupBuku === tanggalFormatLokal) {
             if (arsip.penjualan) gabunganPenjualan = gabunganPenjualan.concat(arsip.penjualan);
@@ -603,7 +614,6 @@ function lihatRekap() {
         }
     });
 
-    // Jika tidak ada data sama sekali di tanggal tersebut
     if (gabunganPenjualan.length === 0 && gabunganPengeluaran.length === 0 && gabunganMasuk.length === 0 && gabunganKeluar.length === 0) {
         document.getElementById("hasilRekap").innerHTML = `
             <p class="placeholder-text" style="color: #dc2626; font-weight: bold;">
@@ -612,13 +622,11 @@ function lihatRekap() {
         return;
     }
 
-    // Hitung total finansial gabungan
     let totalJual = 0;
     let totalKeluar = 0;
     gabunganPenjualan.forEach(x => totalJual += Number(x.total) || 0);
     gabunganPengeluaran.forEach(x => totalKeluar += Number(x.total) || 0);
 
-    // Render tampilan ke HTML
     let html = `
         <h3>📅 Rekapan Tanggal ${tanggalFormatLokal}</h3>
         <hr>
@@ -880,11 +888,6 @@ function tampilSemuaStok() {
     let html = '';
     namaBarang.forEach((nama, index) => {
         const jumlah = stok[nama] || 0;
-        let statusClass = 'status-habis';
-        let statusText = 'Habis';
-        if (jumlah > 0) statusClass = 'status-tersedia';
-        if (jumlah > 0 && jumlah <= 5) statusClass = 'status-minim';
-
         html += `
         <tr>
             <td>${index + 1}</td>
@@ -959,6 +962,7 @@ function prosesTutupBuku() {
         arsipLama.push(dataTutupBukuHariIni);
         localStorage.setItem("arsipTutupBuku", JSON.stringify(arsipLama));
 
+        // Mengosongkan data transaksi aktif
         localStorage.removeItem("penjualan");
         localStorage.removeItem("pengeluaran");
         localStorage.removeItem("masuk");
